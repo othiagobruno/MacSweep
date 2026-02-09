@@ -64,6 +64,10 @@ export interface StartupItem {
 }
 
 const electronAPI = {
+  window: {
+    close: (): Promise<void> => ipcRenderer.invoke("window:close"),
+    minimize: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
+  },
   scan: {
     systemJunk: (): Promise<SystemJunkResult[]> =>
       ipcRenderer.invoke("scan:systemJunk"),

@@ -51,8 +51,9 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1100,
     height: 750,
-    minWidth: 900,
-    minHeight: 600,
+    resizable: false,
+    fullscreenable: false,
+    maximizable: false,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 18 },
     backgroundColor: "#0a0a0f",

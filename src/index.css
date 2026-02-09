@@ -112,7 +112,7 @@ body {
 
 .sidebar-header {
   padding: 20px 20px 16px;
-  padding-top: calc(var(--titlebar-height) - 8px);
+  padding-top: calc(var(--titlebar-height) + 8px);
   -webkit-app-region: drag;
 }
 

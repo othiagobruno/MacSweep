@@ -32,7 +32,7 @@
     "lastModified": "Última Modificação"
   },
   "sidebar": {
-    "smartScan": "Escaneamento Inteligente",
+    "smartScan": "Modo Inteligente",
     "systemJunk": "Lixo do Sistema",
     "largeFiles": "Arquivos Grandes",
     "performance": "Desempenho",
@@ -45,7 +45,7 @@
     "freeSpace": "{{space}} livre"
   },
   "smartScan": {
-    "title": "Escaneamento Inteligente",
+    "title": "Modo Inteligente",
     "subtitle": "Escaneie seu Mac para lixo, malware e problemas de desempenho",
     "clickToStart": "Clique para iniciar um escaneamento completo",
     "analyzingJunk": "Analisando lixo do sistema...",
