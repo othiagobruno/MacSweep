@@ -7,7 +7,9 @@ import { Performance } from "./pages/performance";
 import { Uninstaller } from "./pages/uninstaller";
 import { Maintenance } from "./pages/maintenance";
 import { StartupItems } from "./pages/startup-items";
+import { Settings } from "./pages/settings";
 import { AppStateProvider } from "./contexts/app-state-context";
+import { SettingsProvider } from "./contexts/settings-context";
 import type { Page, DiskUsage } from "./types";
 
 function App() {
@@ -35,73 +37,83 @@ function App() {
   }, []);
 
   return (
-    <AppStateProvider>
-      <div className="app-layout">
-        <Sidebar
-          currentPage={currentPage}
-          onNavigate={setCurrentPage}
-          diskUsage={diskUsage}
-        />
-        <main className="main-content">
-          <div
-            style={{
-              display: currentPage === "smart-scan" ? "block" : "none",
-              height: "100%",
-            }}
-          >
-            <SmartScan />
-          </div>
-          <div
-            style={{
-              display: currentPage === "system-junk" ? "block" : "none",
-              height: "100%",
-            }}
-          >
-            <SystemJunk />
-          </div>
-          <div
-            style={{
-              display: currentPage === "large-files" ? "block" : "none",
-              height: "100%",
-            }}
-          >
-            <LargeFiles />
-          </div>
-          <div
-            style={{
-              display: currentPage === "performance" ? "block" : "none",
-              height: "100%",
-            }}
-          >
-            <Performance />
-          </div>
-          <div
-            style={{
-              display: currentPage === "uninstaller" ? "block" : "none",
-              height: "100%",
-            }}
-          >
-            <Uninstaller />
-          </div>
-          <div
-            style={{
-              display: currentPage === "maintenance" ? "block" : "none",
-              height: "100%",
-            }}
-          >
-            <Maintenance />
-          </div>
-          <div
-            style={{
-              display: currentPage === "startup-items" ? "block" : "none",
-              height: "100%",
-            }}
-          >
-            <StartupItems />
-          </div>
-        </main>
-      </div>
-    </AppStateProvider>
+    <SettingsProvider>
+      <AppStateProvider>
+        <div className="app-layout">
+          <Sidebar
+            currentPage={currentPage}
+            onNavigate={setCurrentPage}
+            diskUsage={diskUsage}
+          />
+          <main className="main-content">
+            <div
+              style={{
+                display: currentPage === "smart-scan" ? "block" : "none",
+                height: "100%",
+              }}
+            >
+              <SmartScan />
+            </div>
+            <div
+              style={{
+                display: currentPage === "system-junk" ? "block" : "none",
+                height: "100%",
+              }}
+            >
+              <SystemJunk />
+            </div>
+            <div
+              style={{
+                display: currentPage === "large-files" ? "block" : "none",
+                height: "100%",
+              }}
+            >
+              <LargeFiles />
+            </div>
+            <div
+              style={{
+                display: currentPage === "performance" ? "block" : "none",
+                height: "100%",
+              }}
+            >
+              <Performance />
+            </div>
+            <div
+              style={{
+                display: currentPage === "uninstaller" ? "block" : "none",
+                height: "100%",
+              }}
+            >
+              <Uninstaller />
+            </div>
+            <div
+              style={{
+                display: currentPage === "maintenance" ? "block" : "none",
+                height: "100%",
+              }}
+            >
+              <Maintenance />
+            </div>
+            <div
+              style={{
+                display: currentPage === "startup-items" ? "block" : "none",
+                height: "100%",
+              }}
+            >
+              <StartupItems />
+            </div>
+            <div
+              style={{
+                display: currentPage === "settings" ? "block" : "none",
+                height: "100%",
+              }}
+            >
+              <Settings />
+            </div>
+          </main>
+        </div>
+      </AppStateProvider>
+    </SettingsProvider>
   );
 }
 

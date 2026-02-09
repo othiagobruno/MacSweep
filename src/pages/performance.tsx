@@ -10,6 +10,7 @@ import {
   AreaChart,
   Tooltip,
 } from "recharts";
+import { useTranslation } from "react-i18next";
 import { formatBytes } from "../utils";
 import type { CpuUsage, MemoryUsage, DiskUsage } from "../types";
 
@@ -19,6 +20,7 @@ interface ChartDataPoint {
 }
 
 export function Performance() {
+  const { t } = useTranslation();
   const [cpu, setCpu] = useState<CpuUsage | null>(null);
   const [memory, setMemory] = useState<MemoryUsage | null>(null);
   const [disk, setDisk] = useState<DiskUsage | null>(null);
@@ -110,10 +112,8 @@ export function Performance() {
     <div className="page-container">
       <div className="page-scrollable">
         <div className="page-header">
-          <h1 className="page-title">Performance</h1>
-          <p className="page-subtitle">
-            Real-time system performance monitoring
-          </p>
+          <h1 className="page-title">{t("performance.title")}</h1>
+          <p className="page-subtitle">{t("performance.subtitle")}</p>
         </div>
 
         <div className="perf-grid">
@@ -122,7 +122,7 @@ export function Performance() {
             <div className="perf-card-header">
               <span className="perf-card-title">
                 <Cpu size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
-                CPU Usage
+                {t("performance.cpuUsage")}
               </span>
               <span
                 className={`status-badge ${
@@ -134,18 +134,18 @@ export function Performance() {
                 }`}
               >
                 {(cpu?.total ?? 0) > 80
-                  ? "High"
+                  ? t("performance.high")
                   : (cpu?.total ?? 0) > 50
-                    ? "Medium"
-                    : "Low"}
+                    ? t("performance.medium")
+                    : t("performance.low")}
               </span>
             </div>
             <div className="perf-card-value">
               {cpu ? `${cpu.total.toFixed(1)}%` : "..."}
             </div>
             <div className="perf-card-label">
-              User: {cpu?.user.toFixed(1) ?? 0}% | System:{" "}
-              {cpu?.system.toFixed(1) ?? 0}%
+              {t("performance.user")}: {cpu?.user.toFixed(1) ?? 0}% |{" "}
+              {t("performance.system")}: {cpu?.system.toFixed(1) ?? 0}%
             </div>
             <div style={{ height: 120, marginTop: 16 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -184,7 +184,7 @@ export function Performance() {
                   size={14}
                   style={{ marginRight: 6, verticalAlign: -2 }}
                 />
-                Memory
+                {t("performance.memory")}
               </span>
               <span
                 className={`status-badge ${
@@ -204,7 +204,8 @@ export function Performance() {
               {memory ? `${memory.percentUsed.toFixed(1)}%` : "..."}
             </div>
             <div className="perf-card-label">
-              Free: {memory ? formatBytes(memory.free) : "..."}
+              {t("performance.freeLabel")}:{" "}
+              {memory ? formatBytes(memory.free) : "..."}
             </div>
             <div style={{ height: 120, marginTop: 16 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -243,7 +244,7 @@ export function Performance() {
                   size={14}
                   style={{ marginRight: 6, verticalAlign: -2 }}
                 />
-                Disk Usage
+                {t("performance.diskUsage")}
               </span>
               <span className="status-badge idle">{disk?.mount ?? "/"}</span>
             </div>
@@ -261,7 +262,10 @@ export function Performance() {
                 </div>
                 <div className="perf-card-label">
                   {disk
-                    ? `${formatBytes(disk.used)} used of ${formatBytes(disk.total)}`
+                    ? t("performance.usedOf", {
+                        used: formatBytes(disk.used),
+                        total: formatBytes(disk.total),
+                      })
                     : "..."}
                 </div>
               </div>
@@ -275,7 +279,7 @@ export function Performance() {
                 >
                   {disk ? formatBytes(disk.free) : "..."}
                 </div>
-                <div className="perf-card-label">Available</div>
+                <div className="perf-card-label">{t("common.available")}</div>
               </div>
             </div>
             <div className="storage-bar-container">
@@ -295,14 +299,14 @@ export function Performance() {
                     className="storage-legend-dot"
                     style={{ background: "#6c5ce7" }}
                   />
-                  Used
+                  {t("common.used")}
                 </div>
                 <div className="storage-legend-item">
                   <div
                     className="storage-legend-dot"
                     style={{ background: "var(--bg-tertiary)" }}
                   />
-                  Free
+                  {t("performance.freeLabel")}
                 </div>
               </div>
             </div>

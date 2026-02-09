@@ -7,6 +7,7 @@ import {
   Sparkles,
   Check,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { ScanningOrb, ScanningLines, PulseLoader } from "../components/loaders";
 import { formatBytes } from "../utils";
@@ -15,6 +16,7 @@ import { useState } from "react";
 import type { SystemJunkResult } from "../types";
 
 export function SmartScan() {
+  const { t } = useTranslation();
   const {
     smartScan: {
       scanState,
@@ -64,10 +66,10 @@ export function SmartScan() {
     setCleaned(false);
 
     const steps = [
-      { label: "Analyzing system junk...", target: 30 },
-      { label: "Checking performance...", target: 60 },
-      { label: "Scanning for threats...", target: 85 },
-      { label: "Generating report...", target: 100 },
+      { label: t("smartScan.analyzingJunk"), target: 30 },
+      { label: t("smartScan.checkingPerformance"), target: 60 },
+      { label: t("smartScan.scanningThreats"), target: 85 },
+      { label: t("smartScan.generatingReport"), target: 100 },
     ];
 
     let junkResults: SystemJunkResult[] = [];
@@ -139,10 +141,8 @@ export function SmartScan() {
     <div className="page-container">
       <div className="page-scrollable">
         <div className="page-header">
-          <h1 className="page-title">Smart Scan</h1>
-          <p className="page-subtitle">
-            Scan your Mac for junk, malware, and performance issues
-          </p>
+          <h1 className="page-title">{t("smartScan.title")}</h1>
+          <p className="page-subtitle">{t("smartScan.subtitle")}</p>
         </div>
 
         <div className="scan-container">
@@ -152,10 +152,10 @@ export function SmartScan() {
                 <div className="scan-circle-bg" />
                 <button className="scan-btn" onClick={handleScan}>
                   <Zap size={40} />
-                  Scan
+                  {t("common.scan")}
                 </button>
               </div>
-              <p className="scan-status">Click to start a comprehensive scan</p>
+              <p className="scan-status">{t("smartScan.clickToStart")}</p>
             </div>
           )}
 
@@ -183,7 +183,9 @@ export function SmartScan() {
                   <div className="summary-card-value">
                     {formatBytes(results.totalJunk)}
                   </div>
-                  <div className="summary-card-label">System Junk</div>
+                  <div className="summary-card-label">
+                    {t("smartScan.systemJunk")}
+                  </div>
                 </div>
 
                 <div className="summary-card">
@@ -196,8 +198,12 @@ export function SmartScan() {
                   >
                     <Shield size={22} />
                   </div>
-                  <div className="summary-card-value">No Threats</div>
-                  <div className="summary-card-label">Malware Scan</div>
+                  <div className="summary-card-value">
+                    {t("smartScan.noThreats")}
+                  </div>
+                  <div className="summary-card-label">
+                    {t("smartScan.malwareScan")}
+                  </div>
                 </div>
 
                 <div className="summary-card">
@@ -210,8 +216,12 @@ export function SmartScan() {
                   >
                     <Gauge size={22} />
                   </div>
-                  <div className="summary-card-value">Good</div>
-                  <div className="summary-card-label">Performance</div>
+                  <div className="summary-card-value">
+                    {t("smartScan.good")}
+                  </div>
+                  <div className="summary-card-label">
+                    {t("smartScan.performanceLabel")}
+                  </div>
                 </div>
               </div>
 
@@ -221,12 +231,15 @@ export function SmartScan() {
                   onClick={toggleAll}
                 >
                   {selectedCategories.size === results.junk.length
-                    ? "Deselect All"
-                    : "Select All"}
+                    ? t("common.deselectAll")
+                    : t("common.selectAll")}
                 </button>
                 <span className="results-selected-info">
-                  {selectedCategories.size} of {results.junk.length} selected —{" "}
-                  {formatBytes(selectedTotal)}
+                  {t("smartScan.selectedInfo", {
+                    selected: selectedCategories.size,
+                    total: results.junk.length,
+                    size: formatBytes(selectedTotal),
+                  })}
                 </span>
               </div>
 
@@ -252,7 +265,11 @@ export function SmartScan() {
                           </div>
                           <div className="result-row-info">
                             <h4>{cat.category}</h4>
-                            <p>{cat.files.length} items found</p>
+                            <p>
+                              {t("common.itemsFound", {
+                                count: cat.files.length,
+                              })}
+                            </p>
                           </div>
                         </div>
                         <div className="result-row-right">
@@ -291,7 +308,7 @@ export function SmartScan() {
                 }}
               >
                 <CheckCircle2 size={22} />
-                Your Mac is clean!
+                {t("smartScan.yourMacIsClean")}
               </div>
             ) : (
               <button
@@ -300,11 +317,13 @@ export function SmartScan() {
                 disabled={isCleaning || selectedCategories.size === 0}
               >
                 {isCleaning ? (
-                  <PulseLoader label="Cleaning..." size="sm" />
+                  <PulseLoader label={t("common.cleaning")} size="sm" />
                 ) : (
                   <>
                     <Sparkles size={20} />
-                    Clean {formatBytes(selectedTotal)}
+                    {t("smartScan.cleanSize", {
+                      size: formatBytes(selectedTotal),
+                    })}
                   </>
                 )}
               </button>
@@ -315,9 +334,12 @@ export function SmartScan() {
 
       <ConfirmDialog
         isOpen={showCleanConfirm}
-        title="Clean Selected Categories?"
-        message={`This will remove ${formatBytes(selectedTotal)} of junk files from ${selectedCategories.size} selected categories. This action cannot be undone.`}
-        confirmLabel="Clean"
+        title={t("smartScan.confirmTitle")}
+        message={t("smartScan.confirmMessage", {
+          size: formatBytes(selectedTotal),
+          count: selectedCategories.size,
+        })}
+        confirmLabel={t("common.clean")}
         variant="warning"
         onConfirm={handleClean}
         onCancel={() => setShowCleanConfirm(false)}

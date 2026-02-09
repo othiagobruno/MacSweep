@@ -135,6 +135,9 @@ function showTrayWindow(trayBounds: Electron.Rectangle) {
 }
 
 export function createTray(mainWindow: BrowserWindow | null) {
+  // Avoid creating duplicate tray icons
+  if (tray) return;
+
   const icon = createTrayIcon();
   tray = new Tray(icon);
   tray.setToolTip("CleanMyMac");
@@ -148,6 +151,10 @@ export function createTray(mainWindow: BrowserWindow | null) {
       showTrayWindow(bounds);
     }
   });
+
+  // Remove any previously registered handlers to avoid duplicates
+  ipcMain.removeHandler("tray:openMainWindow");
+  ipcMain.removeHandler("tray:quit");
 
   // IPC: open main window
   ipcMain.handle("tray:openMainWindow", () => {
@@ -164,6 +171,8 @@ export function createTray(mainWindow: BrowserWindow | null) {
 }
 
 export function destroyTray() {
+  ipcMain.removeHandler("tray:openMainWindow");
+  ipcMain.removeHandler("tray:quit");
   trayWindow?.destroy();
   trayWindow = null;
   tray?.destroy();

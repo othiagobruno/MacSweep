@@ -13,6 +13,7 @@ import {
   File,
   Minus,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { PulseLoader, ScanningLines } from "../components/loaders";
 import { formatBytes } from "../utils";
@@ -29,6 +30,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
 };
 
 export function SystemJunk() {
+  const { t } = useTranslation();
   const {
     systemJunk: {
       isScanning,
@@ -156,10 +158,8 @@ export function SystemJunk() {
     <div className="page-container">
       <div className="page-scrollable">
         <div className="page-header">
-          <h1 className="page-title">System Junk</h1>
-          <p className="page-subtitle">
-            Find and remove caches, logs, and temporary files
-          </p>
+          <h1 className="page-title">{t("systemJunk.title")}</h1>
+          <p className="page-subtitle">{t("systemJunk.subtitle")}</p>
         </div>
 
         {results.length === 0 && !isScanning && !cleaned && (
@@ -169,17 +169,17 @@ export function SystemJunk() {
                 <div className="scan-circle-bg" />
                 <button className="scan-btn" onClick={handleScan}>
                   <Search size={36} />
-                  Scan
+                  {t("common.scan")}
                 </button>
               </div>
-              <p className="scan-status">Scan for system junk files</p>
+              <p className="scan-status">{t("systemJunk.scanStatus")}</p>
             </div>
           </div>
         )}
 
         {isScanning && (
           <div className="scan-container fade-in" style={{ minHeight: 300 }}>
-            <PulseLoader label="Scanning system directories..." size="lg" />
+            <PulseLoader label={t("systemJunk.scanning")} size="lg" />
             <ScanningLines />
           </div>
         )}
@@ -195,8 +195,10 @@ export function SystemJunk() {
               }}
             >
               <CheckCircle2 size={64} style={{ color: "var(--success)" }} />
-              <h2 style={{ fontSize: 22, fontWeight: 700 }}>All Clean!</h2>
-              <p className="scan-status">System junk has been removed</p>
+              <h2 style={{ fontSize: 22, fontWeight: 700 }}>
+                {t("systemJunk.allClean")}
+              </h2>
+              <p className="scan-status">{t("systemJunk.junkRemoved")}</p>
               <button
                 className="btn btn-secondary"
                 style={{ marginTop: 16 }}
@@ -205,7 +207,7 @@ export function SystemJunk() {
                   handleScan();
                 }}
               >
-                Scan Again
+                {t("common.scanAgain")}
               </button>
             </div>
           </div>
@@ -267,7 +269,9 @@ export function SystemJunk() {
                                 color: "var(--text-secondary)",
                               }}
                             >
-                              {cat.files.length} items
+                              {t("systemJunk.items", {
+                                count: cat.files.length,
+                              })}
                             </p>
                           </div>
                         </div>
@@ -362,7 +366,10 @@ export function SystemJunk() {
                   color: "var(--text-secondary)",
                 }}
               >
-                {selected.size} of {allFilePaths.length} files selected
+                {t("systemJunk.filesSelectedInfo", {
+                  selected: selected.size,
+                  total: allFilePaths.length,
+                })}
                 {selected.size > 0 && ` (${formatBytes(selectedTotal)})`}
               </span>
             </div>
@@ -373,10 +380,13 @@ export function SystemJunk() {
                 onClick={() => setShowCleanConfirm(true)}
               >
                 {isCleaning ? (
-                  <PulseLoader label="Cleaning..." size="sm" />
+                  <PulseLoader label={t("common.cleaning")} size="sm" />
                 ) : (
                   <>
-                    <Sparkles size={16} /> Clean {formatBytes(selectedTotal)}
+                    <Sparkles size={16} />{" "}
+                    {t("systemJunk.cleanSize", {
+                      size: formatBytes(selectedTotal),
+                    })}
                   </>
                 )}
               </button>
@@ -387,9 +397,12 @@ export function SystemJunk() {
 
       <ConfirmDialog
         isOpen={showCleanConfirm}
-        title="Clean Selected Items?"
-        message={`This will remove ${formatBytes(selectedTotal)} of system junk (${selected.size} files). This action cannot be undone.`}
-        confirmLabel="Clean"
+        title={t("systemJunk.confirmTitle")}
+        message={t("systemJunk.confirmMessage", {
+          size: formatBytes(selectedTotal),
+          count: selected.size,
+        })}
+        confirmLabel={t("common.clean")}
         variant="warning"
         onConfirm={handleClean}
         onCancel={() => setShowCleanConfirm(false)}

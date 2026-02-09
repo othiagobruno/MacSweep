@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Package, Search, Trash2, Box, Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { PulseLoader, ScanningLines } from "../components/loaders";
 import { formatBytes } from "../utils";
@@ -7,6 +8,7 @@ import { useAppState } from "../contexts/app-state-context";
 import type { AppInfo } from "../types";
 
 export function Uninstaller() {
+  const { t } = useTranslation();
   const {
     uninstaller: {
       isScanning,
@@ -111,10 +113,8 @@ export function Uninstaller() {
     <div className="page-container">
       <div className="page-scrollable">
         <div className="page-header">
-          <h1 className="page-title">Uninstaller</h1>
-          <p className="page-subtitle">
-            Completely remove applications and their data
-          </p>
+          <h1 className="page-title">{t("uninstaller.title")}</h1>
+          <p className="page-subtitle">{t("uninstaller.subtitle")}</p>
         </div>
 
         {!scanned && !isScanning && (
@@ -124,17 +124,17 @@ export function Uninstaller() {
                 <div className="scan-circle-bg" />
                 <button className="scan-btn" onClick={handleScan}>
                   <Package size={36} />
-                  Scan
+                  {t("common.scan")}
                 </button>
               </div>
-              <p className="scan-status">List all installed applications</p>
+              <p className="scan-status">{t("uninstaller.scanStatus")}</p>
             </div>
           </div>
         )}
 
         {isScanning && (
           <div className="scan-container fade-in" style={{ minHeight: 300 }}>
-            <PulseLoader label="Scanning applications..." size="lg" />
+            <PulseLoader label={t("uninstaller.scanning")} size="lg" />
             <ScanningLines />
           </div>
         )}
@@ -145,7 +145,7 @@ export function Uninstaller() {
               <Search size={18} />
               <input
                 type="text"
-                placeholder="Search applications..."
+                placeholder={t("uninstaller.searchPlaceholder")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -154,8 +154,8 @@ export function Uninstaller() {
             {filteredApps.length === 0 ? (
               <div className="empty-state">
                 <Package size={48} />
-                <h3>No applications found</h3>
-                <p>Try a different search term</p>
+                <h3>{t("uninstaller.noApps")}</h3>
+                <p>{t("uninstaller.tryDifferent")}</p>
               </div>
             ) : (
               <div className="results-container">
@@ -246,9 +246,9 @@ export function Uninstaller() {
                   color: "var(--text-secondary)",
                 }}
               >
-                {filteredApps.length} applications
+                {t("uninstaller.applications", { count: filteredApps.length })}
                 {selected.size > 0 &&
-                  ` • ${selected.size} selected (${formatBytes(selectedSize)})`}
+                  ` • ${t("uninstaller.selectedInfo", { count: selected.size, size: formatBytes(selectedSize) })}`}
               </span>
             </div>
             <div className="toolbar-right">
@@ -258,7 +258,7 @@ export function Uninstaller() {
                   onClick={() => setShowConfirm(true)}
                 >
                   <Trash2 size={14} />
-                  Uninstall ({selected.size})
+                  {t("uninstaller.uninstall", { count: selected.size })}
                 </button>
               )}
             </div>
@@ -268,9 +268,12 @@ export function Uninstaller() {
 
       <ConfirmDialog
         isOpen={showConfirm}
-        title={`Uninstall ${selected.size} application${selected.size > 1 ? "s" : ""}?`}
-        message={`This will permanently delete ${selected.size} app${selected.size > 1 ? "s" : ""} (${formatBytes(selectedSize)}). Your administrator password will be required. This action cannot be undone.`}
-        confirmLabel="Uninstall"
+        title={t("uninstaller.confirmTitle", { count: selected.size })}
+        message={t("uninstaller.confirmMessage", {
+          count: selected.size,
+          size: formatBytes(selectedSize),
+        })}
+        confirmLabel={t("uninstaller.title")}
         variant="danger"
         onConfirm={handleUninstall}
         onCancel={() => setShowConfirm(false)}
@@ -306,11 +309,7 @@ function getMockApps(): AppInfo[] {
       path: "/Applications/Visual Studio Code.app",
       size: 890 * 1024 * 1024,
     },
-    {
-      name: "Slack",
-      path: "/Applications/Slack.app",
-      size: 650 * 1024 * 1024,
-    },
+    { name: "Slack", path: "/Applications/Slack.app", size: 650 * 1024 * 1024 },
     {
       name: "Spotify",
       path: "/Applications/Spotify.app",
@@ -321,16 +320,8 @@ function getMockApps(): AppInfo[] {
       path: "/Applications/Discord.app",
       size: 420 * 1024 * 1024,
     },
-    {
-      name: "Figma",
-      path: "/Applications/Figma.app",
-      size: 350 * 1024 * 1024,
-    },
-    {
-      name: "iTerm",
-      path: "/Applications/iTerm.app",
-      size: 120 * 1024 * 1024,
-    },
+    { name: "Figma", path: "/Applications/Figma.app", size: 350 * 1024 * 1024 },
+    { name: "iTerm", path: "/Applications/iTerm.app", size: 120 * 1024 * 1024 },
     {
       name: "Notion",
       path: "/Applications/Notion.app",

@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { FileSearch, Trash2, Check, ArrowUpDown, File } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { PulseLoader, ScanningLines } from "../components/loaders";
 import { formatBytes, formatDate, getExtColor } from "../utils";
 import { useAppState } from "../contexts/app-state-context";
+import { useSettings } from "../contexts/settings-context";
 import type { LargeFile } from "../types";
 
 export function LargeFiles() {
+  const { t } = useTranslation();
   const {
     largeFiles: {
       isScanning,
@@ -22,6 +25,7 @@ export function LargeFiles() {
     },
   } = useAppState();
 
+  const { settings } = useSettings();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   async function handleScan() {
@@ -31,7 +35,12 @@ export function LargeFiles() {
     try {
       let results: LargeFile[];
       if (window.electronAPI) {
-        results = await window.electronAPI.scan.largeFiles();
+        results = await window.electronAPI.scan.largeFiles({
+          minSizeMB: settings.minFileSize,
+          maxDepth: settings.scanDepth,
+          excludedFolders: settings.excludedFolders,
+          scanHidden: settings.scanHiddenFiles,
+        });
       } else {
         await new Promise((r) => setTimeout(r, 3000));
         results = getMockData();
@@ -106,10 +115,8 @@ export function LargeFiles() {
     <div className="page-container">
       <div className="page-scrollable">
         <div className="page-header">
-          <h1 className="page-title">Large & Old Files</h1>
-          <p className="page-subtitle">
-            Find large files taking up space on your disk
-          </p>
+          <h1 className="page-title">{t("largeFiles.title")}</h1>
+          <p className="page-subtitle">{t("largeFiles.subtitle")}</p>
         </div>
 
         {!scanned && !isScanning && (
@@ -119,17 +126,19 @@ export function LargeFiles() {
                 <div className="scan-circle-bg" />
                 <button className="scan-btn" onClick={handleScan}>
                   <FileSearch size={36} />
-                  Scan
+                  {t("common.scan")}
                 </button>
               </div>
-              <p className="scan-status">Find files larger than 50MB</p>
+              <p className="scan-status">
+                {t("largeFiles.scanStatus", { size: settings.minFileSize })}
+              </p>
             </div>
           </div>
         )}
 
         {isScanning && (
           <div className="scan-container fade-in" style={{ minHeight: 300 }}>
-            <PulseLoader label="Scanning for large files..." size="lg" />
+            <PulseLoader label={t("largeFiles.scanning")} size="lg" />
             <ScanningLines />
           </div>
         )}
@@ -139,17 +148,17 @@ export function LargeFiles() {
             {files.length === 0 ? (
               <div className="empty-state">
                 <FileSearch size={48} />
-                <h3>No large files found</h3>
-                <p>Your disk is well organized!</p>
+                <h3>{t("largeFiles.noLargeFiles")}</h3>
+                <p>{t("largeFiles.diskOrganized")}</p>
               </div>
             ) : (
               <table className="file-list">
                 <thead>
                   <tr>
                     <th style={{ width: 40 }}></th>
-                    <th>Name</th>
-                    <th>Size</th>
-                    <th>Last Modified</th>
+                    <th>{t("common.name")}</th>
+                    <th>{t("common.size")}</th>
+                    <th>{t("common.lastModified")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -226,7 +235,7 @@ export function LargeFiles() {
                   color: "var(--text-secondary)",
                 }}
               >
-                {selected.size} selected
+                {t("largeFiles.selectedInfo", { count: selected.size })}
                 {selected.size > 0 && ` (${formatBytes(selectedSize)})`}
               </span>
             </div>
@@ -245,10 +254,10 @@ export function LargeFiles() {
               >
                 <ArrowUpDown size={14} />
                 {sortBy === "size"
-                  ? "Size"
+                  ? t("common.size")
                   : sortBy === "date"
-                    ? "Date"
-                    : "Name"}
+                    ? t("common.date")
+                    : t("common.name")}
               </button>
               <button
                 className="btn btn-danger btn-sm"
@@ -256,7 +265,7 @@ export function LargeFiles() {
                 onClick={() => setShowDeleteConfirm(true)}
               >
                 <Trash2 size={14} />
-                Delete
+                {t("common.delete")}
               </button>
             </div>
           </div>
@@ -265,9 +274,12 @@ export function LargeFiles() {
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}
-        title="Move to Trash?"
-        message={`${selected.size} files (${formatBytes(selectedSize)}) will be moved to the Trash.`}
-        confirmLabel="Move to Trash"
+        title={t("largeFiles.confirmTitle")}
+        message={t("largeFiles.confirmMessage", {
+          count: selected.size,
+          size: formatBytes(selectedSize),
+        })}
+        confirmLabel={t("largeFiles.moveToTrash")}
         variant="danger"
         onConfirm={handleDelete}
         onCancel={() => setShowDeleteConfirm(false)}

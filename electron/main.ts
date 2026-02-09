@@ -30,6 +30,11 @@ import {
   disableStartupItem,
   enableStartupItem,
 } from "./services/startup-items";
+import {
+  loadSettings,
+  saveSettings,
+  type AppSettings,
+} from "./services/settings-store";
 
 const execFileAsync = promisify(execFile);
 
@@ -124,9 +129,20 @@ ipcMain.handle("scan:systemJunk", async () => {
   return await scanSystemJunk();
 });
 
-ipcMain.handle("scan:largeFiles", async () => {
-  return await scanLargeFiles();
-});
+ipcMain.handle(
+  "scan:largeFiles",
+  async (
+    _event,
+    options?: {
+      minSizeMB?: number;
+      maxDepth?: number;
+      excludedFolders?: string[];
+      scanHidden?: boolean;
+    },
+  ) => {
+    return await scanLargeFiles(options ?? {});
+  },
+);
 
 ipcMain.handle("scan:applications", async () => {
   return await scanApplications();
@@ -227,6 +243,33 @@ ipcMain.handle("startup:disableItem", async (_event, plistPath: string) => {
 
 ipcMain.handle("startup:enableItem", async (_event, plistPath: string) => {
   return await enableStartupItem(plistPath);
+});
+
+// === SETTINGS ===
+ipcMain.handle("settings:load", async () => {
+  return loadSettings();
+});
+
+ipcMain.handle("settings:save", async (_event, settings: AppSettings) => {
+  saveSettings(settings);
+  return { success: true };
+});
+
+ipcMain.handle("settings:setLoginItem", async (_event, enabled: boolean) => {
+  app.setLoginItemSettings({
+    openAtLogin: enabled,
+    openAsHidden: true,
+  });
+  return { success: true };
+});
+
+ipcMain.handle("settings:setTrayVisible", async (_event, visible: boolean) => {
+  if (visible) {
+    if (win) createTray(win);
+  } else {
+    destroyTray();
+  }
+  return { success: true };
 });
 
 app.on("window-all-closed", () => {

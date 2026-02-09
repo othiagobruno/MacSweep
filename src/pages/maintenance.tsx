@@ -8,19 +8,22 @@ import {
   XCircle,
   Play,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useAppState } from "../contexts/app-state-context";
 import type { MaintenanceResult } from "../types";
 
 interface MaintenanceTask {
   id: string;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   icon: React.ReactNode;
   colorClass: string;
+  successKey: string;
   action: () => Promise<MaintenanceResult>;
 }
 
 export function Maintenance() {
+  const { t } = useTranslation();
   const {
     maintenance: { taskStates, setTaskStates },
   } = useAppState();
@@ -28,11 +31,11 @@ export function Maintenance() {
   const tasks: MaintenanceTask[] = [
     {
       id: "free-ram",
-      title: "Free Up RAM",
-      description:
-        "Purge inactive memory to free up RAM for active applications.",
+      titleKey: "maintenance.freeRam",
+      descriptionKey: "maintenance.freeRamDesc",
       icon: <MemoryStick size={24} />,
       colorClass: "purple",
+      successKey: "maintenance.freeRamSuccess",
       action: async () => {
         if (window.electronAPI) {
           return window.electronAPI.maintenance.freeRam();
@@ -40,17 +43,17 @@ export function Maintenance() {
         await new Promise((r) => setTimeout(r, 2000));
         return {
           success: true,
-          message: "RAM memory freed successfully",
+          message: t("maintenance.freeRamSuccess"),
         };
       },
     },
     {
       id: "flush-dns",
-      title: "Flush DNS Cache",
-      description:
-        "Clear DNS cache to fix connection issues and improve browsing.",
+      titleKey: "maintenance.flushDns",
+      descriptionKey: "maintenance.flushDnsDesc",
       icon: <Globe size={24} />,
       colorClass: "green",
+      successKey: "maintenance.flushDnsSuccess",
       action: async () => {
         if (window.electronAPI) {
           return window.electronAPI.maintenance.flushDns();
@@ -58,16 +61,17 @@ export function Maintenance() {
         await new Promise((r) => setTimeout(r, 1500));
         return {
           success: true,
-          message: "DNS cache flushed successfully",
+          message: t("maintenance.flushDnsSuccess"),
         };
       },
     },
     {
       id: "rebuild-spotlight",
-      title: "Rebuild Spotlight Index",
-      description: "Rebuild the Spotlight index to fix search issues.",
+      titleKey: "maintenance.rebuildSpotlight",
+      descriptionKey: "maintenance.rebuildSpotlightDesc",
       icon: <Search size={24} />,
       colorClass: "blue",
+      successKey: "maintenance.rebuildSpotlightSuccess",
       action: async () => {
         if (window.electronAPI) {
           return window.electronAPI.maintenance.rebuildSpotlight();
@@ -75,16 +79,17 @@ export function Maintenance() {
         await new Promise((r) => setTimeout(r, 3000));
         return {
           success: true,
-          message: "Spotlight index rebuild initiated",
+          message: t("maintenance.rebuildSpotlightSuccess"),
         };
       },
     },
     {
       id: "repair-permissions",
-      title: "Repair Disk Permissions",
-      description: "Fix incorrect file permissions that may cause issues.",
+      titleKey: "maintenance.repairPermissions",
+      descriptionKey: "maintenance.repairPermissionsDesc",
       icon: <ShieldCheck size={24} />,
       colorClass: "orange",
+      successKey: "maintenance.repairPermissionsSuccess",
       action: async () => {
         if (window.electronAPI) {
           return window.electronAPI.maintenance.repairPermissions();
@@ -92,7 +97,7 @@ export function Maintenance() {
         await new Promise((r) => setTimeout(r, 2500));
         return {
           success: true,
-          message: "Disk permissions repaired successfully",
+          message: t("maintenance.repairPermissionsSuccess"),
         };
       },
     },
@@ -118,7 +123,7 @@ export function Maintenance() {
         ...prev,
         [task.id]: {
           status: "error",
-          message: err.message || "Task failed",
+          message: err.message || t("maintenance.taskFailed"),
         },
       }));
     }
@@ -142,10 +147,8 @@ export function Maintenance() {
             }}
           >
             <div>
-              <h1 className="page-title">Maintenance</h1>
-              <p className="page-subtitle">
-                Run maintenance tasks to keep your Mac running smoothly
-              </p>
+              <h1 className="page-title">{t("maintenance.title")}</h1>
+              <p className="page-subtitle">{t("maintenance.subtitle")}</p>
             </div>
             <button
               className="btn btn-primary"
@@ -155,7 +158,7 @@ export function Maintenance() {
               )}
             >
               <Play size={16} />
-              Run All
+              {t("maintenance.runAll")}
             </button>
           </div>
         </div>
@@ -179,11 +182,13 @@ export function Maintenance() {
                 <div className={`maintenance-card-icon ${task.colorClass}`}>
                   {task.icon}
                 </div>
-                <h3>{task.title}</h3>
-                <p>{task.description}</p>
+                <h3>{t(task.titleKey)}</h3>
+                <p>{t(task.descriptionKey)}</p>
                 <div className="maintenance-card-footer">
                   {state.status === "idle" && (
-                    <span className="status-badge idle">Ready</span>
+                    <span className="status-badge idle">
+                      {t("common.ready")}
+                    </span>
                   )}
                   {state.status === "running" && (
                     <span className="status-badge running">
@@ -193,19 +198,19 @@ export function Maintenance() {
                           animation: "spin 1s linear infinite",
                         }}
                       />
-                      Running...
+                      {t("common.running")}
                     </span>
                   )}
                   {state.status === "done" && (
                     <span className="status-badge done">
                       <CheckCircle2 size={12} />
-                      {state.message || "Done"}
+                      {state.message || t("common.done")}
                     </span>
                   )}
                   {state.status === "error" && (
                     <span className="status-badge error">
                       <XCircle size={12} />
-                      {state.message || "Failed"}
+                      {state.message || t("common.failed")}
                     </span>
                   )}
                 </div>

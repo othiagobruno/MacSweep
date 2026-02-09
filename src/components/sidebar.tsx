@@ -10,6 +10,7 @@ import {
   Power,
   Settings,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { Page, DiskUsage } from "../types";
 import { formatBytes } from "../utils";
 
@@ -21,47 +22,54 @@ interface SidebarProps {
 
 const navItems: Array<{
   id: Page;
-  label: string;
+  labelKey: string;
   icon: React.ReactNode;
 }> = [
   {
     id: "smart-scan",
-    label: "Smart Scan",
+    labelKey: "sidebar.smartScan",
     icon: <Zap size={20} />,
   },
   {
     id: "system-junk",
-    label: "System Junk",
+    labelKey: "sidebar.systemJunk",
     icon: <Trash2 size={20} />,
   },
   {
     id: "large-files",
-    label: "Large Files",
+    labelKey: "sidebar.largeFiles",
     icon: <FileSearch size={20} />,
   },
   {
     id: "performance",
-    label: "Performance",
+    labelKey: "sidebar.performance",
     icon: <Activity size={20} />,
   },
   {
     id: "uninstaller",
-    label: "Uninstaller",
+    labelKey: "sidebar.uninstaller",
     icon: <Package size={20} />,
   },
   {
     id: "maintenance",
-    label: "Maintenance",
+    labelKey: "sidebar.maintenance",
     icon: <Wrench size={20} />,
   },
   {
     id: "startup-items",
-    label: "Startup Items",
+    labelKey: "sidebar.startupItems",
     icon: <Power size={20} />,
+  },
+  {
+    id: "settings",
+    labelKey: "sidebar.settings",
+    icon: <Settings size={20} />,
   },
 ];
 
 export function Sidebar({ currentPage, onNavigate, diskUsage }: SidebarProps) {
+  const { t } = useTranslation();
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -74,7 +82,7 @@ export function Sidebar({ currentPage, onNavigate, diskUsage }: SidebarProps) {
       </div>
 
       <nav className="sidebar-nav">
-        <div className="sidebar-section-title">Features</div>
+        <div className="sidebar-section-title">{t("sidebar.features")}</div>
         {navItems.map((item) => (
           <div
             key={item.id}
@@ -82,7 +90,7 @@ export function Sidebar({ currentPage, onNavigate, diskUsage }: SidebarProps) {
             onClick={() => onNavigate(item.id)}
           >
             <span className="sidebar-item-icon">{item.icon}</span>
-            {item.label}
+            <span className="sidebar-item-label">{t(item.labelKey)}</span>
           </div>
         ))}
       </nav>
@@ -92,10 +100,12 @@ export function Sidebar({ currentPage, onNavigate, diskUsage }: SidebarProps) {
           <div className="sidebar-disk-label">
             <span>
               <HardDrive size={12} style={{ marginRight: 4 }} />
-              Macintosh HD
+              {t("sidebar.macintoshHD")}
             </span>
             <span>
-              {diskUsage ? `${formatBytes(diskUsage.free)} free` : "..."}
+              {diskUsage
+                ? t("sidebar.freeSpace", { space: formatBytes(diskUsage.free) })
+                : "..."}
             </span>
           </div>
           <div className="sidebar-disk-bar">

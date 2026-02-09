@@ -67,8 +67,12 @@ const electronAPI = {
   scan: {
     systemJunk: (): Promise<SystemJunkResult[]> =>
       ipcRenderer.invoke("scan:systemJunk"),
-    largeFiles: (): Promise<LargeFile[]> =>
-      ipcRenderer.invoke("scan:largeFiles"),
+    largeFiles: (options?: {
+      minSizeMB?: number;
+      maxDepth?: number;
+      excludedFolders?: string[];
+      scanHidden?: boolean;
+    }): Promise<LargeFile[]> => ipcRenderer.invoke("scan:largeFiles", options),
     applications: (): Promise<AppInfo[]> =>
       ipcRenderer.invoke("scan:applications"),
     startupItems: (): Promise<StartupItem[]> =>
@@ -115,6 +119,16 @@ const electronAPI = {
       plistPath: string,
     ): Promise<{ success: boolean; message: string }> =>
       ipcRenderer.invoke("startup:enableItem", plistPath),
+  },
+  settings: {
+    load: (): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke("settings:load"),
+    save: (data: Record<string, unknown>): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke("settings:save", data),
+    setLoginItem: (enabled: boolean): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke("settings:setLoginItem", enabled),
+    setTrayVisible: (visible: boolean): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke("settings:setTrayVisible", visible),
   },
 };
 

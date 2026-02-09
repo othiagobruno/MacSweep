@@ -19,6 +19,7 @@ import {
   Thermometer,
   RefreshCw,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface CpuUsage {
   user: number;
@@ -142,9 +143,9 @@ type QuickActionStatus = "idle" | "running" | "done";
 
 interface QuickAction {
   id: string;
-  label: string;
-  runningLabel: string;
-  doneLabel: string;
+  labelKey: string;
+  runningKey: string;
+  doneKey: string;
   icon: React.ReactNode;
   colorClass: string;
   apiMethod: string;
@@ -153,36 +154,36 @@ interface QuickAction {
 const QUICK_ACTIONS: QuickAction[] = [
   {
     id: "free-ram",
-    label: "Free Memory",
-    runningLabel: "Freeing...",
-    doneLabel: "Memory Freed!",
+    labelKey: "tray.freeMemory",
+    runningKey: "tray.freeingMemory",
+    doneKey: "tray.memoryFreed",
     icon: <Zap size={14} />,
     colorClass: "purple",
     apiMethod: "freeRam",
   },
   {
     id: "flush-dns",
-    label: "Flush DNS",
-    runningLabel: "Flushing...",
-    doneLabel: "DNS Flushed!",
+    labelKey: "tray.flushDns",
+    runningKey: "tray.flushingDns",
+    doneKey: "tray.dnsFlushed",
     icon: <Globe size={14} />,
     colorClass: "green",
     apiMethod: "flushDns",
   },
   {
     id: "rebuild-spotlight",
-    label: "Rebuild Spotlight",
-    runningLabel: "Rebuilding...",
-    doneLabel: "Spotlight Rebuilt!",
+    labelKey: "tray.rebuildSpotlight",
+    runningKey: "tray.rebuildingSpotlight",
+    doneKey: "tray.spotlightRebuilt",
     icon: <Search size={14} />,
     colorClass: "blue",
     apiMethod: "rebuildSpotlight",
   },
   {
     id: "repair-permissions",
-    label: "Repair Permissions",
-    runningLabel: "Repairing...",
-    doneLabel: "Permissions Fixed!",
+    labelKey: "tray.repairPermissions",
+    runningKey: "tray.repairingPermissions",
+    doneKey: "tray.permissionsFixed",
     icon: <ShieldCheck size={14} />,
     colorClass: "orange",
     apiMethod: "repairPermissions",
@@ -190,6 +191,7 @@ const QUICK_ACTIONS: QuickAction[] = [
 ];
 
 export function TrayApp() {
+  const { t } = useTranslation();
   const [cpu, setCpu] = useState<CpuUsage | null>(null);
   const [memory, setMemory] = useState<MemoryUsage | null>(null);
   const [disk, setDisk] = useState<DiskUsage | null>(null);
@@ -293,12 +295,12 @@ export function TrayApp() {
     const diskVal = disk?.percentUsed ?? 0;
 
     if (cpuVal > 80 || memVal > 85 || diskVal > 90) {
-      return { label: "Needs Attention", color: "#ff6b6b" };
+      return { label: t("tray.needsAttention"), color: "#ff6b6b" };
     }
     if (cpuVal > 50 || memVal > 70 || diskVal > 80) {
-      return { label: "Fair", color: "#ffa502" };
+      return { label: t("tray.fair"), color: "#ffa502" };
     }
-    return { label: "Good", color: "#00d2a0" };
+    return { label: t("tray.good"), color: "#00d2a0" };
   }
 
   function getCpuColor(cpuPct: number): string {
@@ -343,22 +345,32 @@ export function TrayApp() {
             value={cpu?.total ?? 0}
             color="#6c5ce7"
             icon={<Cpu size={16} />}
-            label="CPU"
-            detail={cpu ? `${cpu.user.toFixed(0)}% user` : "—"}
+            label={t("tray.cpu")}
+            detail={
+              cpu ? t("tray.userPercent", { value: cpu.user.toFixed(0) }) : "—"
+            }
           />
           <CircularGauge
             value={memory?.percentUsed ?? 0}
             color="#00d2a0"
             icon={<MemoryStick size={16} />}
-            label="Memory"
-            detail={memory ? `${formatBytes(memory.free)} free` : "—"}
+            label={t("performance.memory")}
+            detail={
+              memory
+                ? t("tray.freeSpace", { space: formatBytes(memory.free) })
+                : "—"
+            }
           />
           <CircularGauge
             value={disk?.percentUsed ?? 0}
             color="#74b9ff"
             icon={<HardDrive size={16} />}
-            label="Disk"
-            detail={disk ? `${formatBytes(disk.free)} free` : "—"}
+            label={t("performance.diskUsage")}
+            detail={
+              disk
+                ? t("tray.freeSpace", { space: formatBytes(disk.free) })
+                : "—"
+            }
           />
         </div>
 
@@ -366,7 +378,7 @@ export function TrayApp() {
         {battery && (
           <>
             <div className="tray-divider" />
-            <div className="tray-section-label">Battery</div>
+            <div className="tray-section-label">{t("tray.battery")}</div>
             <div className="tray-battery">
               <div className="tray-battery-header">
                 <div className="tray-battery-icon-wrap">
@@ -384,10 +396,10 @@ export function TrayApp() {
                   </span>
                   <span className="tray-battery-state">
                     {battery.isFullyCharged
-                      ? "Fully Charged"
+                      ? t("tray.fullyCharged")
                       : battery.isCharging
-                        ? "Charging"
-                        : "On Battery"}
+                        ? t("tray.charging")
+                        : t("tray.onBattery")}
                   </span>
                 </div>
               </div>
@@ -406,14 +418,18 @@ export function TrayApp() {
               <div className="tray-battery-stats">
                 <div className="tray-battery-stat">
                   <RefreshCw size={12} />
-                  <span className="tray-battery-stat-label">Cycles</span>
+                  <span className="tray-battery-stat-label">
+                    {t("tray.cycles")}
+                  </span>
                   <span className="tray-battery-stat-value">
                     {battery.cycleCount}
                   </span>
                 </div>
                 <div className="tray-battery-stat">
                   <Heart size={12} />
-                  <span className="tray-battery-stat-label">Health</span>
+                  <span className="tray-battery-stat-label">
+                    {t("tray.health")}
+                  </span>
                   <span
                     className="tray-battery-stat-value"
                     style={{
@@ -430,14 +446,16 @@ export function TrayApp() {
                 </div>
                 <div className="tray-battery-stat">
                   <Thermometer size={12} />
-                  <span className="tray-battery-stat-label">Temp</span>
+                  <span className="tray-battery-stat-label">
+                    {t("tray.temp")}
+                  </span>
                   <span className="tray-battery-stat-value">
                     {battery.temperature.toFixed(1)}°C
                   </span>
                 </div>
               </div>
               <div className="tray-battery-condition">
-                <span>Condition:</span>
+                <span>{t("tray.condition")}</span>
                 <span
                   className="tray-battery-condition-value"
                   style={{
@@ -460,10 +478,10 @@ export function TrayApp() {
         <div className="tray-divider" />
 
         {/* Top Processes */}
-        <div className="tray-section-label">Top Processes</div>
+        <div className="tray-section-label">{t("tray.topProcesses")}</div>
         <div className="tray-processes">
           {processes.length === 0 ? (
-            <div className="tray-processes-empty">No processes found</div>
+            <div className="tray-processes-empty">{t("tray.noProcesses")}</div>
           ) : (
             processes.map((proc) => (
               <div key={proc.pid} className="tray-process-row">
@@ -474,7 +492,7 @@ export function TrayApp() {
                       className="tray-process-cpu"
                       style={{ color: getCpuColor(proc.cpu) }}
                     >
-                      {proc.cpu.toFixed(1)}% CPU
+                      {proc.cpu.toFixed(1)}% {t("tray.cpu")}
                     </span>
                     <span className="tray-process-mem">
                       {formatBytes(proc.memoryBytes)}
@@ -485,7 +503,7 @@ export function TrayApp() {
                   className="tray-process-kill"
                   onClick={() => handleKill(proc.pid)}
                   disabled={killingPids.has(proc.pid)}
-                  title={`Terminate ${proc.name}`}
+                  title={t("tray.terminate", { name: proc.name })}
                 >
                   {killingPids.has(proc.pid) ? (
                     <Loader2 size={13} className="tray-spin" />
@@ -502,7 +520,7 @@ export function TrayApp() {
         <div className="tray-divider" />
 
         {/* Quick Actions */}
-        <div className="tray-section-label">Quick Actions</div>
+        <div className="tray-section-label">{t("tray.quickActions")}</div>
         <div className="tray-actions">
           {QUICK_ACTIONS.map((action) => {
             const st = actionStatuses[action.id] || "idle";
@@ -524,10 +542,10 @@ export function TrayApp() {
                 </div>
                 <span>
                   {st === "running"
-                    ? action.runningLabel
+                    ? t(action.runningKey)
                     : st === "done"
-                      ? action.doneLabel
-                      : action.label}
+                      ? t(action.doneKey)
+                      : t(action.labelKey)}
                 </span>
               </button>
             );
@@ -541,11 +559,11 @@ export function TrayApp() {
         <div className="tray-footer">
           <button className="tray-footer-btn primary" onClick={handleOpenMain}>
             <ExternalLink size={13} />
-            Open CleanMyMac
+            {t("tray.openCleanMyMac")}
           </button>
           <button className="tray-footer-btn quit" onClick={handleQuit}>
             <Power size={13} />
-            Quit
+            {t("tray.quit")}
           </button>
         </div>
       </div>

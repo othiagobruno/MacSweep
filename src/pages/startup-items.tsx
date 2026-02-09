@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Power, Search, Check, Shield, User } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { PulseLoader, ScanningLines } from "../components/loaders";
 import { useAppState } from "../contexts/app-state-context";
 import type { StartupItem } from "../types";
@@ -19,6 +20,7 @@ function truncatePath(p: string, maxLen = 60): string {
 }
 
 export function StartupItems() {
+  const { t } = useTranslation();
   const {
     startupItems: {
       isScanning,
@@ -121,10 +123,8 @@ export function StartupItems() {
     <div className="page-container">
       <div className="page-scrollable">
         <div className="page-header">
-          <h1 className="page-title">Startup Items</h1>
-          <p className="page-subtitle">
-            Manage programs that launch when your Mac starts up
-          </p>
+          <h1 className="page-title">{t("startupItems.title")}</h1>
+          <p className="page-subtitle">{t("startupItems.subtitle")}</p>
         </div>
 
         {!scanned && !isScanning && (
@@ -134,17 +134,17 @@ export function StartupItems() {
                 <div className="scan-circle-bg" />
                 <button className="scan-btn" onClick={handleScan}>
                   <Power size={36} />
-                  Scan
+                  {t("common.scan")}
                 </button>
               </div>
-              <p className="scan-status">List all startup and login items</p>
+              <p className="scan-status">{t("startupItems.scanStatus")}</p>
             </div>
           </div>
         )}
 
         {isScanning && (
           <div className="scan-container fade-in" style={{ minHeight: 300 }}>
-            <PulseLoader label="Scanning startup items..." size="lg" />
+            <PulseLoader label={t("startupItems.scanning")} size="lg" />
             <ScanningLines />
           </div>
         )}
@@ -155,7 +155,7 @@ export function StartupItems() {
               <Search size={18} />
               <input
                 type="text"
-                placeholder="Search startup items..."
+                placeholder={t("startupItems.searchPlaceholder")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -164,8 +164,8 @@ export function StartupItems() {
             {filteredItems.length === 0 ? (
               <div className="empty-state">
                 <Power size={48} />
-                <h3>No startup items found</h3>
-                <p>Try a different search term</p>
+                <h3>{t("startupItems.noItems")}</h3>
+                <p>{t("startupItems.tryDifferent")}</p>
               </div>
             ) : (
               <div className="results-container">
@@ -231,7 +231,9 @@ export function StartupItems() {
                               item.kind === "LaunchDaemon" ? "daemon" : "agent"
                             }`}
                           >
-                            {item.kind === "LaunchDaemon" ? "Daemon" : "Agent"}
+                            {item.kind === "LaunchDaemon"
+                              ? t("startupItems.daemon")
+                              : t("startupItems.agent")}
                           </span>
                           <span
                             className="startup-path-truncated"
@@ -268,7 +270,10 @@ export function StartupItems() {
                   color: "var(--text-secondary)",
                 }}
               >
-                {filteredItems.length} startup items • {enabledCount} enabled
+                {t("startupItems.itemsInfo", {
+                  count: filteredItems.length,
+                  enabled: enabledCount,
+                })}
               </span>
             </div>
           </div>

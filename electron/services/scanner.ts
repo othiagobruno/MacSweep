@@ -150,7 +150,14 @@ export async function scanSystemJunk(): Promise<JunkCategory[]> {
   return categories;
 }
 
-export async function scanLargeFiles(): Promise<
+export interface ScanOptions {
+  minSizeMB?: number;
+  maxDepth?: number;
+  excludedFolders?: string[];
+  scanHidden?: boolean;
+}
+
+export async function scanLargeFiles(options: ScanOptions = {}): Promise<
   Array<{
     path: string;
     name: string;
@@ -159,6 +166,13 @@ export async function scanLargeFiles(): Promise<
     extension: string;
   }>
 > {
+  const {
+    minSizeMB = 50,
+    maxDepth = 5,
+    excludedFolders = [],
+    scanHidden = false,
+  } = options;
+
   const home = os.homedir();
   const results: Array<{
     path: string;
@@ -168,13 +182,29 @@ export async function scanLargeFiles(): Promise<
     extension: string;
   }> = [];
 
+  // Build exclusion clauses
+  const defaultExclusions = [
+    "*/Library/Application Support/MobileSync/*",
+    "*/.Trash/*",
+    "*/node_modules/*",
+    "*/.git/*",
+  ];
+
+  if (!scanHidden) {
+    defaultExclusions.push("*/.*/*");
+  }
+
+  const allExclusions = [
+    ...defaultExclusions,
+    ...excludedFolders.map((f) => `${f}/*`),
+  ];
+
+  const exclusionStr = allExclusions.map((e) => `-not -path "${e}"`).join(" ");
+
   try {
     const { stdout } = await execAsync(
-      `find "${home}" -maxdepth 5 -type f -size +50M ` +
-        `-not -path "*/Library/Application Support/MobileSync/*" ` +
-        `-not -path "*/.Trash/*" ` +
-        `-not -path "*/node_modules/*" ` +
-        `-not -path "*/.git/*" ` +
+      `find "${home}" -maxdepth ${maxDepth} -type f -size +${minSizeMB}M ` +
+        `${exclusionStr} ` +
         `-exec stat -f "%z|%m|%N" {} \\; 2>/dev/null | sort -t'|' -k1 -rn | head -50`,
     );
 
