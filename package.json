@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "MacSweep - System Optimizer for macOS",
   "main": "dist-electron/main.js",
+  "author": {
+    "name": "Thiago Bruno Miranda",
+    "email": "thiagobrunomiranda@gmail.com"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -35,9 +39,25 @@
   "build": {
     "appId": "com.macsweep.app",
     "productName": "MacSweep",
+    "icon": "assets/icon.png",
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
     "mac": {
       "category": "public.app-category.utilities",
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "assets/icon.png"
     }
   }
 }

@@ -1,80 +1,78 @@
-import { ElectronAPI } from "../electron/preload";
-
 declare global {
   interface Window {
-    electronAPI: ElectronAPI;
+    electronAPI: {
+      window: {
+        close: () => Promise<void>;
+        minimize: () => Promise<void>;
+      };
+      scan: {
+        systemJunk: () => Promise<import("../shared/types").SystemJunkResult[]>;
+        largeFiles: (options?: {
+          minSizeMB?: number;
+          maxDepth?: number;
+          excludedFolders?: string[];
+          scanHidden?: boolean;
+        }) => Promise<import("../shared/types").LargeFile[]>;
+        applications: () => Promise<import("../shared/types").AppInfo[]>;
+        startupItems: () => Promise<import("../shared/types").StartupItem[]>;
+      };
+      clean: {
+        files: (
+          paths: string[],
+        ) => Promise<import("../shared/types").CleanResult>;
+      };
+      system: {
+        cpuUsage: () => Promise<import("../shared/types").CpuUsage>;
+        memoryUsage: () => Promise<import("../shared/types").MemoryUsage>;
+        diskUsage: () => Promise<import("../shared/types").DiskUsage>;
+      };
+      maintenance: {
+        freeRam: () => Promise<import("../shared/types").MaintenanceResult>;
+        flushDns: () => Promise<import("../shared/types").MaintenanceResult>;
+        rebuildSpotlight: () => Promise<
+          import("../shared/types").MaintenanceResult
+        >;
+        repairPermissions: () => Promise<
+          import("../shared/types").MaintenanceResult
+        >;
+      };
+      shell: {
+        moveToTrash: (path: string) => Promise<void>;
+        forceDelete: (
+          paths: string[],
+        ) => Promise<{ success: boolean; errors: string[] }>;
+      };
+      app: {
+        getIcon: (appPath: string) => Promise<string | null>;
+      };
+      startup: {
+        disableItem: (
+          plistPath: string,
+        ) => Promise<{ success: boolean; message: string }>;
+        enableItem: (
+          plistPath: string,
+        ) => Promise<{ success: boolean; message: string }>;
+      };
+      settings: {
+        load: () => Promise<Record<string, unknown>>;
+        save: (data: Record<string, unknown>) => Promise<{ success: boolean }>;
+        setLoginItem: (enabled: boolean) => Promise<{ success: boolean }>;
+        setTrayVisible: (visible: boolean) => Promise<{ success: boolean }>;
+      };
+    };
   }
 }
 
-export interface SystemJunkResult {
-  category: string;
-  files: Array<{ path: string; size: number; name: string }>;
-  totalSize: number;
-}
-
-export interface LargeFile {
-  path: string;
-  name: string;
-  size: number;
-  lastModified: string;
-  extension: string;
-}
-
-export interface AppInfo {
-  name: string;
-  path: string;
-  size: number;
-  icon?: string;
-}
-
-export interface CpuUsage {
-  user: number;
-  system: number;
-  idle: number;
-  total: number;
-}
-
-export interface MemoryUsage {
-  total: number;
-  used: number;
-  free: number;
-  percentUsed: number;
-}
-
-export interface DiskUsage {
-  total: number;
-  used: number;
-  free: number;
-  percentUsed: number;
-  mount: string;
-}
-
-export interface MaintenanceResult {
-  success: boolean;
-  message: string;
-}
-
-export interface CleanResult {
-  success: boolean;
-  freedSpace: number;
-  errors: string[];
-}
-
-export interface StartupItem {
-  name: string;
-  path: string;
-  programPath: string;
-  kind: "LaunchAgent" | "LaunchDaemon";
-  isEnabled: boolean;
-  appPath: string | null;
-}
-
-export type Page =
-  | "smart-scan"
-  | "system-junk"
-  | "large-files"
-  | "performance"
-  | "uninstaller"
-  | "maintenance"
-  | "startup-items"
-  | "settings";
+// Re-export all types from shared
+export type {
+  SystemJunkResult,
+  LargeFile,
+  AppInfo,
+  CpuUsage,
+  MemoryUsage,
+  DiskUsage,
+  MaintenanceResult,
+  CleanResult,
+  StartupItem,
+  Page,
+} from "../shared/types";

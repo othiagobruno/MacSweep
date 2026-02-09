@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, nativeImage, shell } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
@@ -47,8 +47,17 @@ let win: BrowserWindow | null;
 
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 
+const iconPath = path.join(
+  app.isPackaged
+    ? path.dirname(app.getPath("exe"))
+    : path.join(__dirname, ".."),
+  "assets",
+  "icon.png",
+);
+
 function createWindow() {
   win = new BrowserWindow({
+    icon: iconPath,
     width: 1100,
     height: 750,
     resizable: false,
@@ -287,6 +296,14 @@ app.on("activate", () => {
 });
 
 app.whenReady().then(() => {
+  // Set dock icon on macOS
+  if (process.platform === "darwin") {
+    const dockIcon = nativeImage.createFromPath(iconPath);
+    if (!dockIcon.isEmpty()) {
+      app.dock.setIcon(dockIcon);
+    }
+  }
+
   createWindow();
   createTray(win);
 });

@@ -71,12 +71,8 @@ body {
 }
 
 .tray-logo {
-  font-size: 16px;
-  background: linear-gradient(135deg, #6c5ce7, #a29bfe);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  font-weight: 800;
+  display: flex;
+  align-items: center;
 }
 
 .tray-brand {

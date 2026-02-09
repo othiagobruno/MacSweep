@@ -5,7 +5,6 @@ import {
   Activity,
   Package,
   Wrench,
-  Sparkles,
   HardDrive,
   Power,
   Settings,
@@ -13,6 +12,8 @@ import {
 import { useTranslation } from "react-i18next";
 import type { Page, DiskUsage } from "../types";
 import { formatBytes } from "../utils";
+import logoFull from "../../assets/logo.png";
+import logoCompact from "../../assets/logo-icon.png";
 
 interface SidebarProps {
   currentPage: Page;
@@ -74,10 +75,8 @@ export function Sidebar({ currentPage, onNavigate, diskUsage }: SidebarProps) {
     <aside className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-logo">
-          <div className="sidebar-logo-icon">
-            <Sparkles size={20} />
-          </div>
-          <span className="sidebar-logo-text">MacSweep</span>
+          <img src={logoFull} alt="MacSweep" className="logo-full" />
+          <img src={logoCompact} alt="MacSweep" className="logo-compact" />
         </div>
       </div>
 

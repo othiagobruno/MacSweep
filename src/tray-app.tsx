@@ -19,6 +19,8 @@ import {
   Thermometer,
   RefreshCw,
 } from "lucide-react";
+import logoFull from "../assets/logo.png";
+import logoCompact from "../assets/logo-icon.png";
 import { useTranslation } from "react-i18next";
 
 interface CpuUsage {
@@ -320,8 +322,13 @@ export function TrayApp() {
         {/* Header */}
         <div className="tray-header">
           <div className="tray-header-left">
-            <div className="tray-logo">✦</div>
-            <span className="tray-brand">MacSweep</span>
+            <div className="tray-logo">
+              <img
+                src={logoFull}
+                alt="MacSweep"
+                style={{ height: 18, width: "auto" }}
+              />
+            </div>
           </div>
           <div
             className="tray-status-badge"

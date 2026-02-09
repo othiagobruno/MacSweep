@@ -7,8 +7,9 @@ import {
   FolderX,
   Plus,
   X,
-  Sparkles,
 } from "lucide-react";
+import logoFull from "../../assets/logo.png";
+import logoCompact from "../../assets/logo-icon.png";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettings, type AppSettings } from "../contexts/settings-context";
@@ -452,9 +453,8 @@ export function Settings() {
           <div className="settings-section fade-in">
             <div className="settings-about-hero">
               <div className="settings-about-logo">
-                <Sparkles size={32} />
+                <img src={logoFull} alt="MacSweep" />
               </div>
-              <h2>MacSweep</h2>
               <p className="settings-about-version">{t("settings.version")}</p>
               <p className="settings-about-desc">{t("settings.aboutDesc")}</p>
             </div>
