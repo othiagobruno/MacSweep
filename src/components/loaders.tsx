@@ -1,5 +1,5 @@
 /**
- * Premium loading/scanning animations inspired by CleanMyMac
+ * Premium loading/scanning animations inspired by MacSweep
  */
 
 interface ScanningOrbProps {

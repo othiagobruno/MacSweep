@@ -321,7 +321,7 @@ export function TrayApp() {
         <div className="tray-header">
           <div className="tray-header-left">
             <div className="tray-logo">✦</div>
-            <span className="tray-brand">CleanMyMac</span>
+            <span className="tray-brand">MacSweep</span>
           </div>
           <div
             className="tray-status-badge"
@@ -559,7 +559,7 @@ export function TrayApp() {
         <div className="tray-footer">
           <button className="tray-footer-btn primary" onClick={handleOpenMain}>
             <ExternalLink size={13} />
-            {t("tray.openCleanMyMac")}
+            {t("tray.openMacSweep")}
           </button>
           <button className="tray-footer-btn quit" onClick={handleQuit}>
             <Power size={13} />

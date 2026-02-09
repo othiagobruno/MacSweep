@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
-const SETTINGS_PATH = path.join(os.homedir(), ".cleanmymac-settings.json");
+const SETTINGS_PATH = path.join(os.homedir(), ".macsweep-settings.json");
 
 export interface AppSettings {
   language: string;

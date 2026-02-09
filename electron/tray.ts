@@ -140,7 +140,7 @@ export function createTray(mainWindow: BrowserWindow | null) {
 
   const icon = createTrayIcon();
   tray = new Tray(icon);
-  tray.setToolTip("CleanMyMac");
+  tray.setToolTip("MacSweep");
 
   trayWindow = createTrayWindow();
 

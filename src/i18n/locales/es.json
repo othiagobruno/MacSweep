@@ -148,7 +148,7 @@
   },
   "settings": {
     "title": "Configuración",
-    "subtitle": "Configura CleanMyMac según tus preferencias",
+    "subtitle": "Configura MacSweep según tus preferencias",
     "general": "General",
     "scanning": "Escaneo",
     "appearance": "Apariencia",
@@ -157,7 +157,7 @@
     "language": "Idioma",
     "languageDesc": "Selecciona tu idioma de visualización preferido",
     "launchAtLogin": "Iniciar al Entrar",
-    "launchAtLoginDesc": "Iniciar CleanMyMac automáticamente al iniciar sesión",
+    "launchAtLoginDesc": "Iniciar MacSweep automáticamente al iniciar sesión",
     "notifications": "Notificaciones",
     "notificationsDesc": "Mostrar notificaciones del sistema para resultados de escaneo",
     "showInMenuBar": "Mostrar en la Barra de Menú",
@@ -203,7 +203,7 @@
     "version": "Versión 1.0.0 (Build 2026.02)",
     "aboutDesc": "La herramienta definitiva de limpieza y optimización para tu Mac. Mantén tu sistema rápido, limpio y organizado.",
     "footer1": "Hecho con ❤️ para usuarios Mac en todo el mundo",
-    "footer2": "© 2026 CleanMyMac. Todos los derechos reservados."
+    "footer2": "© 2026 MacSweep. Todos los derechos reservados."
   },
   "tray": {
     "battery": "Batería",
@@ -231,7 +231,7 @@
     "repairPermissions": "Reparar Permisos",
     "repairingPermissions": "Reparando...",
     "permissionsFixed": "¡Permisos Corregidos!",
-    "openCleanMyMac": "Abrir CleanMyMac",
+    "openMacSweep": "Abrir MacSweep",
     "quit": "Salir",
     "needsAttention": "Necesita Atención",
     "fair": "Regular",

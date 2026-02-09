@@ -1,7 +1,7 @@
 {
-  "name": "cleanmymac",
+  "name": "macsweep",
   "version": "1.0.0",
-  "description": "CleanMyMac Clone - System Optimizer for macOS",
+  "description": "MacSweep - System Optimizer for macOS",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -33,8 +33,8 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.cleanmymac.app",
-    "productName": "CleanMyMac",
+    "appId": "com.macsweep.app",
+    "productName": "MacSweep",
     "mac": {
       "category": "public.app-category.utilities",
       "target": "dmg"

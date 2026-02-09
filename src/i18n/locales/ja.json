@@ -148,7 +148,7 @@
   },
   "settings": {
     "title": "設定",
-    "subtitle": "CleanMyMacをご自分の好みに合わせて設定",
+    "subtitle": "MacSweepをご自分の好みに合わせて設定",
     "general": "一般",
     "scanning": "スキャン",
     "appearance": "外観",
@@ -157,7 +157,7 @@
     "language": "言語",
     "languageDesc": "お好みの表示言語を選択してください",
     "launchAtLogin": "ログイン時に起動",
-    "launchAtLoginDesc": "ログイン時にCleanMyMacを自動的に起動",
+    "launchAtLoginDesc": "ログイン時にMacSweepを自動的に起動",
     "notifications": "通知",
     "notificationsDesc": "スキャン結果のシステム通知を表示",
     "showInMenuBar": "メニューバーに表示",
@@ -203,7 +203,7 @@
     "version": "バージョン 1.0.0 (ビルド 2026.02)",
     "aboutDesc": "Mac用の究極のクリーニング＆最適化ツール。システムを高速、クリーン、整理された状態に保ちます。",
     "footer1": "世界中のMacユーザーのために ❤️ で作りました",
-    "footer2": "© 2026 CleanMyMac. All rights reserved."
+    "footer2": "© 2026 MacSweep. All rights reserved."
   },
   "tray": {
     "battery": "バッテリー",
@@ -231,7 +231,7 @@
     "repairPermissions": "アクセス権修復",
     "repairingPermissions": "修復中...",
     "permissionsFixed": "アクセス権修復完了！",
-    "openCleanMyMac": "CleanMyMac を開く",
+    "openMacSweep": "MacSweep を開く",
     "quit": "終了",
     "needsAttention": "注意が必要",
     "fair": "普通",

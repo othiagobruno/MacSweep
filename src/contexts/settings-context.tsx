@@ -118,7 +118,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           setSettings((prev) => ({ ...prev, ...data }) as AppSettings);
         } else {
           // Fallback to localStorage
-          const stored = localStorage.getItem("cleanmymac-settings");
+          const stored = localStorage.getItem("macsweep-settings");
           if (stored) {
             const parsed = JSON.parse(stored);
             setSettings((prev) => ({
@@ -185,7 +185,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           );
         } else {
           localStorage.setItem(
-            "cleanmymac-settings",
+            "macsweep-settings",
             JSON.stringify(newSettings),
           );
         }

@@ -454,7 +454,7 @@ export function Settings() {
               <div className="settings-about-logo">
                 <Sparkles size={32} />
               </div>
-              <h2>CleanMyMac</h2>
+              <h2>MacSweep</h2>
               <p className="settings-about-version">{t("settings.version")}</p>
               <p className="settings-about-desc">{t("settings.aboutDesc")}</p>
             </div>

@@ -77,7 +77,7 @@ export function Sidebar({ currentPage, onNavigate, diskUsage }: SidebarProps) {
           <div className="sidebar-logo-icon">
             <Sparkles size={20} />
           </div>
-          <span className="sidebar-logo-text">CleanMyMac</span>
+          <span className="sidebar-logo-text">MacSweep</span>
         </div>
       </div>
 
