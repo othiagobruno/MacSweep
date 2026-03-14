@@ -61,7 +61,11 @@
     "yourMacIsClean": "Your Mac is clean!",
     "cleanSize": "Clean {{size}}",
     "confirmTitle": "Clean Selected Categories?",
-    "confirmMessage": "This will remove {{size}} of junk files from {{count}} selected categories. This action cannot be undone."
+    "confirmMessage": "This will remove {{size}} of junk files from {{count}} selected categories. This action cannot be undone.",
+    "cleanSuccess": "Selected categories were cleaned.",
+    "cleanSuccessWithRemaining": "Selected categories were cleaned. Remaining items stayed available for review.",
+    "cleanPartial": "Some selected categories could not be fully cleaned. Protected files may require your administrator password.",
+    "cleanFailed": "No selected categories were cleaned."
   },
   "systemJunk": {
     "title": "System Junk",
@@ -74,7 +78,11 @@
     "filesSelectedInfo": "{{selected}} of {{total}} files selected",
     "cleanSize": "Clean {{size}}",
     "confirmTitle": "Clean Selected Items?",
-    "confirmMessage": "This will remove {{size}} of system junk ({{count}} files). This action cannot be undone."
+    "confirmMessage": "This will remove {{size}} of system junk ({{count}} files). This action cannot be undone.",
+    "cleanSuccess": "Selected files were removed.",
+    "cleanSuccessWithRemaining": "Selected files were removed. Remaining items stayed available for review.",
+    "cleanPartial": "Some selected files could not be removed. Protected files may require your administrator password.",
+    "cleanFailed": "No selected files were removed."
   },
   "largeFiles": {
     "title": "Large & Old Files",
@@ -86,7 +94,10 @@
     "selectedInfo": "{{count}} selected",
     "moveToTrash": "Move to Trash",
     "confirmTitle": "Move to Trash?",
-    "confirmMessage": "{{count}} files ({{size}}) will be moved to the Trash."
+    "confirmMessage": "{{count}} files ({{size}}) will be moved to the Trash.",
+    "trashSuccess": "Selected files were moved to the Trash. Empty the Trash to free disk space.",
+    "trashPartial": "Some files were moved to the Trash, but others could not be moved.",
+    "trashFailed": "No selected files were moved to the Trash."
   },
   "performance": {
     "title": "Performance",

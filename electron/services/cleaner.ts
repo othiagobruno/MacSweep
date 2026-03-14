@@ -5,11 +5,13 @@ interface CleanResult {
   success: boolean;
   freedSpace: number;
   errors: string[];
+  failedPaths: string[];
 }
 
 export async function cleanFiles(filePaths: string[]): Promise<CleanResult> {
   let freedSpace = 0;
   const errors: string[] = [];
+  const failedPaths: string[] = [];
 
   for (const filePath of filePaths) {
     try {
@@ -26,6 +28,7 @@ export async function cleanFiles(filePaths: string[]): Promise<CleanResult> {
         fs.unlinkSync(filePath);
       }
     } catch (err: any) {
+      failedPaths.push(filePath);
       errors.push(`Failed to delete ${filePath}: ${err.message}`);
     }
   }
@@ -34,6 +37,7 @@ export async function cleanFiles(filePaths: string[]): Promise<CleanResult> {
     success: errors.length === 0,
     freedSpace,
     errors,
+    failedPaths,
   };
 }
 

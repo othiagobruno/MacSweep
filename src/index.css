@@ -915,6 +915,48 @@ body {
   color: var(--danger);
 }
 
+.action-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.action-notice.success {
+  border-color: rgba(0, 210, 160, 0.25);
+  background: rgba(0, 210, 160, 0.08);
+  color: var(--success);
+}
+
+.action-notice.error {
+  border-color: rgba(255, 107, 129, 0.25);
+  background: rgba(255, 107, 129, 0.08);
+  color: var(--danger);
+}
+
+.action-notice.warning {
+  border-color: rgba(253, 203, 110, 0.25);
+  background: rgba(253, 203, 110, 0.08);
+  color: var(--warning);
+}
+
+.action-notice.info {
+  border-color: rgba(116, 185, 255, 0.25);
+  background: rgba(116, 185, 255, 0.08);
+  color: var(--info);
+}
+
+.action-notice svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
 /* === APP LIST (Uninstaller) === */
 .app-grid {
   display: grid;

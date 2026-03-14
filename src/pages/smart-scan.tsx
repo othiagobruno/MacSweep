@@ -8,6 +8,7 @@ import {
   Check,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ActionNotice } from "../components/action-notice";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { ScanningOrb, ScanningLines, PulseLoader } from "../components/loaders";
 import { formatBytes } from "../utils";
@@ -38,6 +39,19 @@ export function SmartScan() {
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     new Set(),
   );
+  const [feedback, setFeedback] = useState<{
+    tone: "success" | "warning" | "error";
+    message: string;
+  } | null>(null);
+
+  async function scanSystemJunkResults() {
+    if (window.electronAPI) {
+      const junkResults = await window.electronAPI.scan.systemJunk();
+      return junkResults.filter((category) => category.files.length > 0);
+    }
+
+    return getMockJunkData();
+  }
 
   function toggleCategory(category: string) {
     setSelectedCategories((prev) => {
@@ -64,6 +78,7 @@ export function SmartScan() {
     setScanState("scanning");
     setProgress(0);
     setCleaned(false);
+    setFeedback(null);
 
     const steps = [
       { label: t("smartScan.analyzingJunk"), target: 30 },
@@ -79,7 +94,7 @@ export function SmartScan() {
 
       if (i === 0 && window.electronAPI) {
         try {
-          junkResults = await window.electronAPI.scan.systemJunk();
+          junkResults = await scanSystemJunkResults();
         } catch {
           junkResults = getMockJunkData();
         }
@@ -91,9 +106,14 @@ export function SmartScan() {
       setProgress(steps[i].target);
     }
 
-    const totalJunk = junkResults.reduce((sum, cat) => sum + cat.totalSize, 0);
+    const totalJunk = junkResults.reduce(
+      (sum, cat) =>
+        sum + cat.files.reduce((catSum, file) => catSum + file.size, 0),
+      0,
+    );
     setResults({ junk: junkResults, totalJunk });
     setSelectedCategories(new Set(junkResults.map((cat) => cat.category)));
+    setCleaned(junkResults.length === 0);
     setScanState("done");
     setScanStatus("");
   }
@@ -111,8 +131,11 @@ export function SmartScan() {
   async function handleClean() {
     setShowCleanConfirm(false);
     setIsCleaning(true);
+    setCleaned(false);
+    setFeedback(null);
 
     if (results && window.electronAPI) {
+      const selectedNames = Array.from(selectedCategories);
       const selectedJunk = results.junk.filter((cat) =>
         selectedCategories.has(cat.category),
       );
@@ -120,21 +143,88 @@ export function SmartScan() {
         cat.files.map((f) => f.path),
       );
       try {
-        await window.electronAPI.clean.files(allPaths);
+        const result = await window.electronAPI.clean.files(allPaths);
+
+        if (result.failedPaths.length > 0) {
+          await window.electronAPI.shell.forceDelete(result.failedPaths);
+        }
+
+        const refreshedJunk = await scanSystemJunkResults();
+        const refreshedSelected = selectedNames.filter((category) =>
+          refreshedJunk.some((item) => item.category === category),
+        );
+
+        setResults({
+          junk: refreshedJunk,
+          totalJunk: refreshedJunk.reduce(
+            (sum, cat) =>
+              sum + cat.files.reduce((catSum, file) => catSum + file.size, 0),
+            0,
+          ),
+        });
+        setSelectedCategories(new Set(refreshedSelected));
+        setCleaned(refreshedJunk.length === 0);
+        window.dispatchEvent(new Event("macsweep:disk-usage-refresh"));
+
+        if (refreshedSelected.length === 0) {
+          setFeedback({
+            tone: "success",
+            message:
+              refreshedJunk.length === 0
+                ? t("smartScan.cleanSuccess")
+                : t("smartScan.cleanSuccessWithRemaining"),
+          });
+        } else if (refreshedSelected.length < selectedNames.length) {
+          setFeedback({
+            tone: "warning",
+            message: t("smartScan.cleanPartial"),
+          });
+        } else {
+          setFeedback({
+            tone: "error",
+            message: t("smartScan.cleanFailed"),
+          });
+        }
       } catch {
-        // Continue with UI update
+        setFeedback({
+          tone: "error",
+          message: t("smartScan.cleanFailed"),
+        });
       }
+    } else if (results) {
+      const nextJunk = results.junk.filter(
+        (cat) => !selectedCategories.has(cat.category),
+      );
+      setResults({
+        junk: nextJunk,
+        totalJunk: nextJunk.reduce(
+          (sum, cat) =>
+            sum + cat.files.reduce((catSum, file) => catSum + file.size, 0),
+          0,
+        ),
+      });
+      setSelectedCategories(new Set());
+      setCleaned(nextJunk.length === 0);
+      setFeedback({
+        tone: "success",
+        message:
+          nextJunk.length === 0
+            ? t("smartScan.cleanSuccess")
+            : t("smartScan.cleanSuccessWithRemaining"),
+      });
     }
 
-    await new Promise((r) => setTimeout(r, 2000));
     setIsCleaning(false);
-    setCleaned(true);
   }
 
   const selectedTotal = results
     ? results.junk
         .filter((cat) => selectedCategories.has(cat.category))
-        .reduce((sum, cat) => sum + cat.totalSize, 0)
+        .reduce(
+          (sum, cat) =>
+            sum + cat.files.reduce((catSum, file) => catSum + file.size, 0),
+          0,
+        )
     : 0;
 
   return (
@@ -144,6 +234,10 @@ export function SmartScan() {
           <h1 className="page-title">{t("smartScan.title")}</h1>
           <p className="page-subtitle">{t("smartScan.subtitle")}</p>
         </div>
+
+        {feedback && (
+          <ActionNotice tone={feedback.tone} message={feedback.message} />
+        )}
 
         <div className="scan-container">
           {scanState === "idle" && (
@@ -245,9 +339,17 @@ export function SmartScan() {
 
               <div className="results-container">
                 {[...results.junk]
-                  .sort((a, b) => b.totalSize - a.totalSize)
+                  .sort(
+                    (a, b) =>
+                      b.files.reduce((sum, file) => sum + file.size, 0) -
+                      a.files.reduce((sum, file) => sum + file.size, 0),
+                  )
                   .map((cat) => {
                     const isSelected = selectedCategories.has(cat.category);
+                    const categorySize = cat.files.reduce(
+                      (sum, file) => sum + file.size,
+                      0,
+                    );
                     return (
                       <div
                         key={cat.category}
@@ -274,7 +376,7 @@ export function SmartScan() {
                         </div>
                         <div className="result-row-right">
                           <span className="result-size">
-                            {formatBytes(cat.totalSize)}
+                            {formatBytes(categorySize)}
                           </span>
                         </div>
                       </div>

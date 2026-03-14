@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FileSearch, Trash2, Check, ArrowUpDown, File } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ActionNotice } from "../components/action-notice";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { PulseLoader, ScanningLines } from "../components/loaders";
 import { formatBytes, formatDate, getExtColor } from "../utils";
@@ -27,24 +28,32 @@ export function LargeFiles() {
 
   const { settings } = useSettings();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [feedback, setFeedback] = useState<{
+    tone: "info" | "warning" | "error";
+    message: string;
+  } | null>(null);
+
+  async function scanLargeFiles() {
+    if (window.electronAPI) {
+      return window.electronAPI.scan.largeFiles({
+        minSizeMB: settings.minFileSize,
+        maxDepth: settings.scanDepth,
+        excludedFolders: settings.excludedFolders,
+        scanHidden: settings.scanHiddenFiles,
+      });
+    }
+
+    await new Promise((r) => setTimeout(r, 3000));
+    return getMockData();
+  }
 
   async function handleScan() {
     setIsScanning(true);
     setScanned(false);
+    setFeedback(null);
 
     try {
-      let results: LargeFile[];
-      if (window.electronAPI) {
-        results = await window.electronAPI.scan.largeFiles({
-          minSizeMB: settings.minFileSize,
-          maxDepth: settings.scanDepth,
-          excludedFolders: settings.excludedFolders,
-          scanHidden: settings.scanHiddenFiles,
-        });
-      } else {
-        await new Promise((r) => setTimeout(r, 3000));
-        results = getMockData();
-      }
+      const results = await scanLargeFiles();
       setFiles(results);
       setScanned(true);
     } catch {
@@ -95,20 +104,58 @@ export function LargeFiles() {
 
   async function handleDelete() {
     setShowDeleteConfirm(false);
+    setFeedback(null);
+
+    const paths = Array.from(selected);
+    let movedCount = 0;
+    let failedCount = 0;
 
     if (window.electronAPI) {
-      const paths = Array.from(selected);
-      try {
-        for (const p of paths) {
+      for (const p of paths) {
+        try {
           await window.electronAPI.shell.moveToTrash(p);
+          movedCount += 1;
+        } catch {
+          failedCount += 1;
         }
-      } catch {
-        // continue
       }
+    } else {
+      movedCount = paths.length;
     }
 
-    setFiles(files.filter((f) => !selected.has(f.path)));
+    if (window.electronAPI) {
+      try {
+        setFiles(await scanLargeFiles());
+      } catch {
+        setFiles(files.filter((f) => !selected.has(f.path)));
+      }
+    } else {
+      setFiles(files.filter((f) => !selected.has(f.path)));
+    }
+
     setSelected(new Set());
+    window.dispatchEvent(new Event("macsweep:disk-usage-refresh"));
+
+    if (movedCount > 0 && failedCount === 0) {
+      setFeedback({
+        tone: "info",
+        message: t("largeFiles.trashSuccess"),
+      });
+      return;
+    }
+
+    if (movedCount > 0) {
+      setFeedback({
+        tone: "warning",
+        message: t("largeFiles.trashPartial"),
+      });
+      return;
+    }
+
+    setFeedback({
+      tone: "error",
+      message: t("largeFiles.trashFailed"),
+    });
   }
 
   return (
@@ -118,6 +165,10 @@ export function LargeFiles() {
           <h1 className="page-title">{t("largeFiles.title")}</h1>
           <p className="page-subtitle">{t("largeFiles.subtitle")}</p>
         </div>
+
+        {feedback && (
+          <ActionNotice tone={feedback.tone} message={feedback.message} />
+        )}
 
         {!scanned && !isScanning && (
           <div className="scan-container">

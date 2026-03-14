@@ -61,7 +61,11 @@
     "yourMacIsClean": "Seu Mac está limpo!",
     "cleanSize": "Limpar {{size}}",
     "confirmTitle": "Limpar Categorias Selecionadas?",
-    "confirmMessage": "Isso removerá {{size}} de arquivos de lixo de {{count}} categorias selecionadas. Esta ação não pode ser desfeita."
+    "confirmMessage": "Isso removerá {{size}} de arquivos de lixo de {{count}} categorias selecionadas. Esta ação não pode ser desfeita.",
+    "cleanSuccess": "As categorias selecionadas foram limpas.",
+    "cleanSuccessWithRemaining": "As categorias selecionadas foram limpas. Os itens restantes continuam disponíveis para revisão.",
+    "cleanPartial": "Algumas categorias selecionadas não puderam ser limpas por completo. Arquivos protegidos podem exigir sua senha de administrador.",
+    "cleanFailed": "Nenhuma categoria selecionada foi limpa."
   },
   "systemJunk": {
     "title": "Lixo do Sistema",
@@ -74,7 +78,11 @@
     "filesSelectedInfo": "{{selected}} de {{total}} arquivos selecionados",
     "cleanSize": "Limpar {{size}}",
     "confirmTitle": "Limpar Itens Selecionados?",
-    "confirmMessage": "Isso removerá {{size}} de lixo do sistema ({{count}} arquivos). Esta ação não pode ser desfeita."
+    "confirmMessage": "Isso removerá {{size}} de lixo do sistema ({{count}} arquivos). Esta ação não pode ser desfeita.",
+    "cleanSuccess": "Os arquivos selecionados foram removidos.",
+    "cleanSuccessWithRemaining": "Os arquivos selecionados foram removidos. Os itens restantes continuam disponíveis para revisão.",
+    "cleanPartial": "Alguns arquivos selecionados não puderam ser removidos. Arquivos protegidos podem exigir sua senha de administrador.",
+    "cleanFailed": "Nenhum arquivo selecionado foi removido."
   },
   "largeFiles": {
     "title": "Arquivos Grandes e Antigos",
@@ -86,7 +94,10 @@
     "selectedInfo": "{{count}} selecionado(s)",
     "moveToTrash": "Mover para a Lixeira",
     "confirmTitle": "Mover para a Lixeira?",
-    "confirmMessage": "{{count}} arquivos ({{size}}) serão movidos para a Lixeira."
+    "confirmMessage": "{{count}} arquivos ({{size}}) serão movidos para a Lixeira.",
+    "trashSuccess": "Os arquivos selecionados foram movidos para a Lixeira. Esvazie a Lixeira para liberar espaço em disco.",
+    "trashPartial": "Alguns arquivos foram movidos para a Lixeira, mas outros não puderam ser movidos.",
+    "trashFailed": "Nenhum arquivo selecionado foi movido para a Lixeira."
   },
   "performance": {
     "title": "Desempenho",

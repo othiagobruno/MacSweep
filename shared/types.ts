@@ -50,6 +50,7 @@ export interface CleanResult {
   success: boolean;
   freedSpace: number;
   errors: string[];
+  failedPaths: string[];
 }
 
 export interface StartupItem {

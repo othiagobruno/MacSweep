@@ -33,7 +33,23 @@ function App() {
         });
       }
     };
+
+    const handleDiskRefresh = () => {
+      void fetchDisk();
+    };
+
     fetchDisk();
+
+    const intervalId = window.setInterval(fetchDisk, 5000);
+    window.addEventListener("macsweep:disk-usage-refresh", handleDiskRefresh);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener(
+        "macsweep:disk-usage-refresh",
+        handleDiskRefresh,
+      );
+    };
   }, []);
 
   return (
