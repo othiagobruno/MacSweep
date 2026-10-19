@@ -43,13 +43,7 @@ export interface CleanResult {
 /* ── Large files ───────────────────────────────────── */
 
 export type FileKind =
-  | "video"
-  | "audio"
-  | "image"
-  | "archive"
-  | "diskImage"
-  | "document"
-  | "other";
+  "video" | "audio" | "image" | "archive" | "diskImage" | "document" | "other";
 
 export interface LargeFile {
   path: string;
@@ -98,6 +92,8 @@ export interface AppLeftover {
   path: string;
   size: number;
   kind: LeftoverKind;
+  /** macOS denied access (app data protection); needs Full Disk Access. */
+  protected?: boolean;
 }
 
 export interface UninstallRequest {
@@ -152,7 +148,8 @@ export interface BatteryInfo {
   isCharging: boolean;
   isFullyCharged: boolean;
   condition: "normal" | "fair" | "replaceSoon";
-  temperature: number;
+  /** °C, or null when the battery doesn't report it (most Apple Silicon Macs). */
+  temperature: number | null;
   healthPercent: number;
 }
 

@@ -6,8 +6,10 @@
 :root {
   --overlay-rgb: 255, 255, 255;
   --accent-glow: color-mix(in srgb, var(--accent-primary) 30%, transparent);
-  --shadow-glow: 0 4px 20px color-mix(in srgb, var(--accent-primary) 25%, transparent);
-  --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --shadow-glow: 0 4px 20px
+    color-mix(in srgb, var(--accent-primary) 25%, transparent);
+  --font-sans:
+    "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
   font-family: var(--font-sans);
   color-scheme: dark;
 }

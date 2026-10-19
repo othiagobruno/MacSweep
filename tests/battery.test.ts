@@ -34,7 +34,9 @@ describe("parseBattery", () => {
   });
 
   it("flags worn batteries", () => {
-    const info = parseBattery(`"MaxCapacity" = 2500\n"CurrentCapacity" = 2500\n"DesignCapacity" = 5000\n"CycleCount" = 1200`)!;
+    const info = parseBattery(
+      `"MaxCapacity" = 2500\n"CurrentCapacity" = 2500\n"DesignCapacity" = 5000\n"CycleCount" = 1200`,
+    )!;
     expect(info.healthPercent).toBe(50);
     expect(info.condition).toBe("replaceSoon");
   });

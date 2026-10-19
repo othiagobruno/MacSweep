@@ -143,7 +143,17 @@ export async function getAppIcon(appPath: string): Promise<string | null> {
         os.tmpdir(),
         `macsweep_icon_${process.pid}_${Math.random().toString(36).slice(2)}.png`,
       );
-      await run("sips", ["-s", "format", "png", "-z", "64", "64", icns, "--out", tmp]);
+      await run("sips", [
+        "-s",
+        "format",
+        "png",
+        "-z",
+        "64",
+        "64",
+        icns,
+        "--out",
+        tmp,
+      ]);
       const png = await fs.promises.readFile(tmp);
       fs.promises.unlink(tmp).catch(() => {});
       result = `data:image/png;base64,${png.toString("base64")}`;
@@ -179,10 +189,7 @@ export function isLeftoverMatch(
   app: { name: string; bundleId: string | null },
 ): boolean {
   const lower = entry.toLowerCase();
-  const base = lower.replace(
-    /\.(plist|savedstate|binarycookies)$/,
-    "",
-  );
+  const base = lower.replace(/\.(plist|savedstate|binarycookies)$/, "");
   const id = app.bundleId?.toLowerCase();
   if (id) {
     if (base === id) return true;
@@ -190,6 +197,61 @@ export function isLeftoverMatch(
   }
   const name = app.name.toLowerCase();
   return name.length >= 4 && base === name;
+}
+
+/** True when macOS app-data protection blocks reading a folder. */
+async function isAccessDenied(target: string): Promise<boolean> {
+  try {
+    const st = await fs.promises.stat(target);
+    if (st.isDirectory()) await fs.promises.readdir(target);
+    return false;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    return code === "EPERM" || code === "EACCES";
+  }
+}
+
+/** Locations where apps often nest data under a vendor folder ("Google/Chrome"). */
+const VENDOR_LOCATIONS = new Set([
+  "Library/Application Support",
+  "Library/Caches",
+  "Library/Logs",
+]);
+
+/**
+ * Inner names an app may use inside its vendor folder, e.g. for
+ * com.google.Chrome / "Google Chrome": "chrome" and "google chrome".
+ */
+function vendorInfo(app: { name: string; bundleId: string | null }) {
+  const parts = app.bundleId?.toLowerCase().split(".") ?? [];
+  if (parts.length < 3) return null;
+  const vendor = parts[1];
+  const name = app.name.toLowerCase();
+  const inner = new Set(
+    [
+      parts[parts.length - 1],
+      name,
+      name.replace(new RegExp(`^${vendor}\\s+`), ""),
+    ].filter((n) => n.length >= 4),
+  );
+  return vendor.length >= 3 ? { vendor, inner } : null;
+}
+
+/**
+ * Whether a full leftover path belongs to the app: either the entry itself
+ * matches, or it is "<vendor>/<app>" inside a vendor folder.
+ */
+export function isLeftoverPath(
+  fullPath: string,
+  app: { name: string; bundleId: string | null },
+): boolean {
+  if (isLeftoverMatch(path.basename(fullPath), app)) return true;
+  const info = vendorInfo(app);
+  return (
+    !!info &&
+    path.basename(path.dirname(fullPath)).toLowerCase() === info.vendor &&
+    info.inner.has(path.basename(fullPath).toLowerCase())
+  );
 }
 
 export async function findLeftovers(app: AppInfo): Promise<AppLeftover[]> {
@@ -205,12 +267,30 @@ export async function findLeftovers(app: AppInfo): Promise<AppLeftover[]> {
     } catch {
       continue;
     }
-    for (const name of names) {
-      if (!isLeftoverMatch(name, app)) continue;
-      const full = path.join(dir, name);
+    const candidates = names.map((name) => path.join(dir, name));
+
+    // Look one level into a matching vendor folder (never the folder itself,
+    // which is shared by other apps of the same vendor).
+    const info = VENDOR_LOCATIONS.has(loc.dir) ? vendorInfo(app) : null;
+    const vendorDir =
+      info && names.find((n) => n.toLowerCase() === info.vendor);
+    if (vendorDir) {
+      const inner = await fs.promises
+        .readdir(path.join(dir, vendorDir))
+        .catch(() => [] as string[]);
+      candidates.push(...inner.map((n) => path.join(dir, vendorDir, n)));
+    }
+
+    for (const full of candidates) {
+      if (!isLeftoverPath(full, app)) continue;
       if (seen.has(full) || !checkDeletable(full).ok) continue;
       seen.add(full);
-      found.push({ path: full, kind: loc.kind, size: await diskSize(full) });
+      found.push({
+        path: full,
+        kind: loc.kind,
+        size: await diskSize(full),
+        protected: await isAccessDenied(full),
+      });
     }
   }
 
@@ -298,16 +378,16 @@ export async function uninstallApp(
   const names = [path.basename(appPath, ".app"), meta.displayName].filter(
     (n): n is string => Boolean(n),
   );
-  const belongsToApp = (entry: string) =>
+  const belongsToApp = (fullPath: string) =>
     names.some((name) =>
-      isLeftoverMatch(entry, { name, bundleId: meta.bundleId }),
+      isLeftoverPath(fullPath, { name, bundleId: meta.bundleId }),
     );
   for (const leftover of leftovers) {
     // Re-validate: only remove entries that actually match this app.
     if (
       typeof leftover !== "string" ||
       !checkDeletable(leftover).ok ||
-      !belongsToApp(path.basename(leftover))
+      !belongsToApp(leftover)
     ) {
       errors.push(`Skipped ${leftover}`);
       continue;

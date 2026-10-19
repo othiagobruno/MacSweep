@@ -1,5 +1,6 @@
 {
   "name": "macsweep",
+  "productName": "MacSweep",
   "version": "1.1.0",
   "description": "MacSweep - System Optimizer for macOS",
   "main": "dist-electron/main.js",
@@ -19,20 +20,12 @@
     "check": "npm run typecheck && npm run lint && npm run test",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview --mode web",
-    "dist": "npm run build && electron-builder --mac"
+    "dist": "rm -rf dist dist-electron release && npm run build && electron-builder --mac"
   },
-  "dependencies": {
-    "@fontsource-variable/inter": "^5.3.0",
-    "framer-motion": "^11.0.0",
-    "i18next": "^25.8.4",
-    "lucide-react": "^0.300.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-i18next": "^16.5.4",
-    "recharts": "^2.10.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@fontsource-variable/inter": "^5.3.0",
     "@types/node": "^20.19.43",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
@@ -43,8 +36,15 @@
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.26",
+    "framer-motion": "^11.0.0",
     "globals": "^15.15.0",
+    "i18next": "^25.8.4",
+    "lucide-react": "^0.300.0",
     "prettier": "^3.9.10",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-i18next": "^16.5.4",
+    "recharts": "^2.10.0",
     "typescript": "^5.3.0",
     "typescript-eslint": "^8.71.2",
     "vite": "^5.0.0",
@@ -66,7 +66,8 @@
         "from": "assets",
         "to": "assets",
         "filter": [
-          "icon.png"
+          "icon.png",
+          "trayTemplate*.png"
         ]
       }
     ],
@@ -83,6 +84,9 @@
       ],
       "icon": "assets/icon.png",
       "darkModeSupport": true
+    },
+    "directories": {
+      "output": "release"
     }
   },
   "engines": {

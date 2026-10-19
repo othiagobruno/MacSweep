@@ -1,14 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
-  app: { getName: () => "MacSweep", getPath: () => "/tmp/macsweep-test", getLocale: () => "pt-BR" },
+  app: {
+    getName: () => "MacSweep",
+    getPath: () => "/tmp/macsweep-test",
+    getLocale: () => "pt-BR",
+  },
   Notification: { isSupported: () => false },
 }));
 
-const { sanitizeSettings } = await import("../electron/services/settings-store");
+const { sanitizeSettings } =
+  await import("../electron/services/settings-store");
 const { isAutoScanDue } = await import("../electron/scheduler");
-const { DEFAULT_SETTINGS, languageFromLocale } = await import("../shared/defaults");
-const { formatBytes, formatRelative, shortenPath, daysSince } = await import("../src/utils");
+const { DEFAULT_SETTINGS, languageFromLocale } =
+  await import("../shared/defaults");
+const { formatBytes, formatRelative, shortenPath, daysSince } =
+  await import("../src/utils");
 
 describe("sanitizeSettings", () => {
   it("returns defaults for garbage", () => {
@@ -64,7 +71,9 @@ describe("formatting", () => {
 
   it("formats relative dates", () => {
     const now = Date.parse("2026-10-19T12:00:00Z");
-    expect(formatRelative("2026-10-16T12:00:00Z", "en", now)).toBe("3 days ago");
+    expect(formatRelative("2026-10-16T12:00:00Z", "en", now)).toBe(
+      "3 days ago",
+    );
     expect(formatRelative(null, "en", now)).toBeNull();
     expect(daysSince("2026-10-09T12:00:00Z", now)).toBe(10);
   });

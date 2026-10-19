@@ -45,7 +45,9 @@ export function JunkTree({
 
         // While filtering, groups open automatically so matches are visible.
         const isOpen = query ? true : expanded.has(cat.id);
-        const selectedCount = cat.files.filter((f) => selected.has(f.path)).length;
+        const selectedCount = cat.files.filter((f) =>
+          selected.has(f.path),
+        ).length;
         const selectedSize = sumBy(
           cat.files.filter((f) => selected.has(f.path)),
           (f) => f.size,
@@ -70,7 +72,9 @@ export function JunkTree({
               <div className="file-tree-category-left">
                 <Checkbox
                   checked={selectedCount === cat.files.length}
-                  indeterminate={selectedCount > 0 && selectedCount < cat.files.length}
+                  indeterminate={
+                    selectedCount > 0 && selectedCount < cat.files.length
+                  }
                   onChange={() => onToggleCategory(cat)}
                   label={label}
                 />
@@ -85,9 +89,14 @@ export function JunkTree({
                   {t("common.itemsFound", { count: cat.files.length })}
                 </span>
                 <span className="result-size">
-                  {formatBytes(selectedCount > 0 ? selectedSize : cat.totalSize)}
+                  {formatBytes(
+                    selectedCount > 0 ? selectedSize : cat.totalSize,
+                  )}
                 </span>
-                <ChevronRight size={16} className={`file-tree-chevron ${isOpen ? "rotated" : ""}`} />
+                <ChevronRight
+                  size={16}
+                  className={`file-tree-chevron ${isOpen ? "rotated" : ""}`}
+                />
               </div>
             </div>
 
@@ -109,7 +118,9 @@ export function JunkTree({
                             label={file.name}
                           />
                           <div className="file-tree-file-info">
-                            <span className="file-tree-file-name">{file.name}</span>
+                            <span className="file-tree-file-name">
+                              {file.name}
+                            </span>
                             <span className="file-tree-path" title={file.path}>
                               {shortenPath(file.path)}
                             </span>
@@ -127,7 +138,9 @@ export function JunkTree({
                           >
                             <FolderSearch size={14} />
                           </button>
-                          <span className="file-tree-file-size">{formatBytes(file.size)}</span>
+                          <span className="file-tree-file-size">
+                            {formatBytes(file.size)}
+                          </span>
                         </div>
                       </div>
                     );

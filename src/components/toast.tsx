@@ -49,7 +49,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (options: ToastOptions) => {
       const id = nextId.current++;
       setToasts((prev) => [...prev.slice(-3), { ...options, id }]);
-      const duration = options.duration ?? (options.tone === "error" ? 8000 : 5000);
+      const duration =
+        options.duration ?? (options.tone === "error" ? 8000 : 5000);
       if (duration > 0) setTimeout(() => dismiss(id), duration);
     },
     [dismiss],
@@ -64,7 +65,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((toast) => {
           const Icon = ICONS[toast.tone];
           return (
-            <div key={toast.id} className={`toast toast-${toast.tone}`} role="status">
+            <div
+              key={toast.id}
+              className={`toast toast-${toast.tone}`}
+              role="status"
+            >
               <Icon size={18} className="toast-icon" />
               <div className="toast-body">
                 <strong>{toast.title}</strong>

@@ -30,13 +30,22 @@ export const JUNK_COLORS: Record<JunkCategoryId, string> = {
   devCaches: "#e17055",
 };
 
-export function JunkIcon({ id, size = 18 }: { id: JunkCategoryId; size?: number }) {
+export function JunkIcon({
+  id,
+  size = 18,
+}: {
+  id: JunkCategoryId;
+  size?: number;
+}) {
   const Icon = JUNK_ICONS[id] ?? Trash2;
   const color = JUNK_COLORS[id] ?? "var(--accent-secondary)";
   return (
     <div
       className="result-row-icon"
-      style={{ color, background: `color-mix(in srgb, ${color} 14%, transparent)` }}
+      style={{
+        color,
+        background: `color-mix(in srgb, ${color} 14%, transparent)`,
+      }}
     >
       <Icon size={size} />
     </div>

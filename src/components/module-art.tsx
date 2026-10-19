@@ -16,7 +16,13 @@ interface ModuleArtProps {
  * a slowly rotating halo ring and orbiting particles. Pure CSS/SVG, so it
  * follows the module colors and costs nothing to ship.
  */
-export function ModuleArt({ page, size = 240, progress, busy, children }: ModuleArtProps) {
+export function ModuleArt({
+  page,
+  size = 240,
+  progress,
+  busy,
+  children,
+}: ModuleArtProps) {
   const Icon = MODULES[page].icon;
   const r = size / 2 - 6;
   const circumference = 2 * Math.PI * r;

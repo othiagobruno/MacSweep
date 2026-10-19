@@ -6,11 +6,14 @@ interface NavigationContextType {
   navigate: (page: Page) => void;
 }
 
-export const NavigationContext = createContext<NavigationContextType | null>(null);
+export const NavigationContext = createContext<NavigationContextType | null>(
+  null,
+);
 
 export function useNavigation() {
   const context = useContext(NavigationContext);
-  if (!context) throw new Error("useNavigation must be used within NavigationContext");
+  if (!context)
+    throw new Error("useNavigation must be used within NavigationContext");
   return context;
 }
 

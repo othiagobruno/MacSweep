@@ -211,10 +211,11 @@
   position: absolute;
   border-radius: 50%;
   opacity: 0.55;
-  /* Soft edges come from the radial gradient itself (no CSS blur filter), and
-     only transform animates, so this stays on the compositor. */
+  /* Static between navigations: blobs glide to a new spot when the module
+     changes instead of animating forever (a constant animation recomposites
+     the whole vibrant window every frame). */
   will-change: transform;
-  animation: drift 24s ease-in-out infinite alternate;
+  transition: transform 1.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .ambient-blob.a {
@@ -222,7 +223,11 @@
   height: 520px;
   top: -180px;
   right: -140px;
-  background: radial-gradient(circle, color-mix(in srgb, var(--module-glow) 55%, transparent), transparent 65%);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--module-glow) 55%, transparent),
+    transparent 65%
+  );
 }
 
 .ambient-blob.b {
@@ -230,9 +235,11 @@
   height: 640px;
   bottom: -320px;
   left: -200px;
-  background: radial-gradient(circle, color-mix(in srgb, var(--module-from) 90%, white 10%), transparent 65%);
-  animation-duration: 30s;
-  animation-direction: alternate-reverse;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--module-from) 90%, white 10%),
+    transparent 65%
+  );
 }
 
 .ambient-blob.c {
@@ -240,21 +247,52 @@
   height: 360px;
   top: 40%;
   left: 45%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--module-to) 80%, white 20%), transparent 65%);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--module-to) 80%, white 20%),
+    transparent 65%
+  );
   opacity: 0.35;
-  animation-duration: 36s;
 }
 
-@keyframes drift {
-  0% {
-    transform: translate(0, 0) scale(1);
-  }
-  50% {
-    transform: translate(-60px, 40px) scale(1.12);
-  }
-  100% {
-    transform: translate(40px, -30px) scale(0.95);
-  }
+[data-module="system-junk"] .ambient-blob.a {
+  transform: translate(-120px, 60px) scale(1.1);
+}
+[data-module="system-junk"] .ambient-blob.c {
+  transform: translate(-200px, -80px);
+}
+[data-module="large-files"] .ambient-blob.a {
+  transform: translate(-260px, 20px) scale(0.9);
+}
+[data-module="large-files"] .ambient-blob.b {
+  transform: translate(120px, -60px) scale(1.1);
+}
+[data-module="performance"] .ambient-blob.a {
+  transform: translate(-60px, 140px) scale(1.15);
+}
+[data-module="performance"] .ambient-blob.c {
+  transform: translate(160px, 60px);
+}
+[data-module="uninstaller"] .ambient-blob.b {
+  transform: translate(260px, -40px);
+}
+[data-module="uninstaller"] .ambient-blob.c {
+  transform: translate(-120px, 120px) scale(1.2);
+}
+[data-module="maintenance"] .ambient-blob.a {
+  transform: translate(-180px, -40px);
+}
+[data-module="maintenance"] .ambient-blob.b {
+  transform: translate(60px, -120px) scale(1.15);
+}
+[data-module="startup-items"] .ambient-blob.a {
+  transform: translate(-40px, 220px) scale(0.95);
+}
+[data-module="startup-items"] .ambient-blob.c {
+  transform: translate(220px, -140px);
+}
+[data-module="settings"] .ambient-blob.a {
+  transform: translate(-320px, -20px) scale(0.8);
 }
 
 /* Page enter: CSS animations restart when a page goes from hidden to shown. */
@@ -396,7 +434,11 @@
   border-radius: 50%;
   border: 1.5px solid rgba(255, 255, 255, 0.5);
   background:
-    radial-gradient(circle at 50% 22%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 58%),
+    radial-gradient(
+      circle at 50% 22%,
+      rgba(255, 255, 255, 0.55),
+      rgba(255, 255, 255, 0) 58%
+    ),
     linear-gradient(
       160deg,
       color-mix(in srgb, var(--module-glow) 75%, white) 0%,
@@ -475,8 +517,12 @@
   position: absolute;
   inset: -20%;
   border-radius: 50%;
-  background: radial-gradient(circle, color-mix(in srgb, var(--module-glow) 50%, transparent) 0%, transparent 62%);
-  filter: blur(8px);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--module-glow) 50%, transparent) 0%,
+    transparent 62%
+  );
+  will-change: transform, opacity;
   animation: halo-breathe 5s ease-in-out infinite;
 }
 
@@ -504,8 +550,17 @@
     transparent 210deg,
     transparent 360deg
   );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 3px),
+    #000 calc(100% - 2px)
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 3px),
+    #000 calc(100% - 2px)
+  );
+  will-change: transform;
   animation: spin 7s linear infinite;
 }
 
@@ -551,6 +606,7 @@
 .module-art-orbit {
   position: absolute;
   inset: 6%;
+  will-change: transform;
   animation: spin 16s linear infinite;
 }
 
@@ -607,6 +663,7 @@
     inset 10px 12px 26px rgba(255, 255, 255, 0.22),
     0 34px 60px -14px color-mix(in srgb, var(--module-to) 70%, black),
     0 0 70px color-mix(in srgb, var(--module-glow) 38%, transparent);
+  will-change: transform;
   animation: float 6s ease-in-out infinite;
 }
 
@@ -628,7 +685,11 @@
   width: 42%;
   height: 22%;
   border-radius: 50%;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.75),
+    rgba(255, 255, 255, 0)
+  );
   transform: rotate(-22deg);
   filter: blur(1.5px);
   pointer-events: none;
@@ -762,23 +823,45 @@
   animation: rise-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.results-container > *:nth-child(1) { animation-delay: 0.02s; }
-.results-container > *:nth-child(2) { animation-delay: 0.06s; }
-.results-container > *:nth-child(3) { animation-delay: 0.1s; }
-.results-container > *:nth-child(4) { animation-delay: 0.14s; }
-.results-container > *:nth-child(5) { animation-delay: 0.18s; }
-.results-container > *:nth-child(6) { animation-delay: 0.22s; }
-.results-container > *:nth-child(7) { animation-delay: 0.26s; }
-.results-container > *:nth-child(n + 8) { animation-delay: 0.3s; }
+.results-container > *:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.results-container > *:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.results-container > *:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.results-container > *:nth-child(4) {
+  animation-delay: 0.14s;
+}
+.results-container > *:nth-child(5) {
+  animation-delay: 0.18s;
+}
+.results-container > *:nth-child(6) {
+  animation-delay: 0.22s;
+}
+.results-container > *:nth-child(7) {
+  animation-delay: 0.26s;
+}
+.results-container > *:nth-child(n + 8) {
+  animation-delay: 0.3s;
+}
 
 .summary-cards > * {
   opacity: 0;
   animation: rise-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.summary-cards > *:nth-child(2) { animation-delay: 0.07s; }
-.summary-cards > *:nth-child(3) { animation-delay: 0.14s; }
-.summary-cards > *:nth-child(4) { animation-delay: 0.21s; }
+.summary-cards > *:nth-child(2) {
+  animation-delay: 0.07s;
+}
+.summary-cards > *:nth-child(3) {
+  animation-delay: 0.14s;
+}
+.summary-cards > *:nth-child(4) {
+  animation-delay: 0.21s;
+}
 
 /* ── Buttons on the gradient ───────────────────────── */
 
@@ -950,7 +1033,11 @@
 :root[data-theme="light"] .main-content .maintenance-card-icon,
 :root[data-theme="light"] .hero-feature-check {
   color: #fff !important;
-  background: linear-gradient(150deg, var(--module-from), var(--module-to)) !important;
+  background: linear-gradient(
+    150deg,
+    var(--module-from),
+    var(--module-to)
+  ) !important;
   border: none;
 }
 
@@ -1044,4 +1131,41 @@
 :root[data-theme="light"] .main-content .btn-ghost {
   color: var(--text-secondary);
   border-color: rgba(0, 0, 0, 0.12);
+}
+
+/* Decorative motion pauses when idle or in the background (see App.tsx).
+   Progress indicators keep moving so work in progress never looks frozen. */
+:root.is-idle *:not(.working-state *, .pulse-dot, .spin, .toast),
+:root.is-idle *:not(.working-state *)::before,
+:root.is-idle *:not(.working-state *)::after {
+  animation-play-state: paused !important;
+}
+
+/*
+ * Frame budget: ambient motion is slow, so ~15 fps is visually smooth, and
+ * stepping lets Chromium skip identical frames on 120 Hz displays (measured:
+ * GPU process 31% → 17% while the hero is animating). Counts are per
+ * keyframe segment: duration (s) × 15.
+ */
+.module-art-sphere {
+  animation-timing-function: steps(45); /* float: 2 × 3s segments */
+}
+.module-art-ring {
+  animation-timing-function: steps(105); /* spin: 7s */
+}
+.module-art-orbit {
+  animation-timing-function: steps(240); /* spin: 16s */
+}
+.module-art-halo {
+  animation-timing-function: steps(38); /* breathe: 2 × 2.5s segments */
+}
+.round-btn::before,
+.round-btn::after {
+  animation-timing-function: steps(39); /* ring pulse: 2.6s */
+}
+/* While working, keep the busy indicator fluid. */
+.module-art.busy .module-art-ring,
+.module-art.busy .module-art-orbit,
+.module-art.busy .module-art-sphere {
+  animation-timing-function: linear;
 }

@@ -19,7 +19,9 @@ export { DEFAULT_SETTINGS };
 
 function resolveTheme(theme: ThemeId): "dark" | "darker" | "light" {
   if (theme !== "system") return theme;
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  return window.matchMedia("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
 }
 
 function mix(hex: string, target: number, amount: number): string {
@@ -33,7 +35,10 @@ function mix(hex: string, target: number, amount: number): string {
     .padStart(6, "0")}`;
 }
 
-export function accentVars(hex: string, light: boolean): Record<string, string> {
+export function accentVars(
+  hex: string,
+  light: boolean,
+): Record<string, string> {
   // In light mode the "secondary" accent is used for text, so darken it.
   const secondary = light ? mix(hex, 0, 0.2) : mix(hex, 255, 0.35);
   return {
@@ -48,7 +53,9 @@ function applyAppearance(settings: AppSettings) {
   const root = document.documentElement;
   const theme = resolveTheme(settings.theme);
   root.dataset.theme = theme;
-  for (const [prop, val] of Object.entries(accentVars(settings.accentColor, theme === "light"))) {
+  for (const [prop, val] of Object.entries(
+    accentVars(settings.accentColor, theme === "light"),
+  )) {
     root.style.setProperty(prop, val);
   }
   root.classList.toggle("no-animations", !settings.animationsEnabled);
@@ -59,7 +66,10 @@ function applyAppearance(settings: AppSettings) {
 
 interface SettingsContextType {
   settings: AppSettings;
-  updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  updateSetting: <K extends keyof AppSettings>(
+    key: K,
+    value: AppSettings[K],
+  ) => void;
   resetToDefaults: () => void;
   isLoaded: boolean;
 }
@@ -67,7 +77,9 @@ interface SettingsContextType {
 const SettingsContext = createContext<SettingsContextType | null>(null);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<AppSettings>({ ...DEFAULT_SETTINGS });
+  const [settings, setSettings] = useState<AppSettings>({
+    ...DEFAULT_SETTINGS,
+  });
   const [isLoaded, setIsLoaded] = useState(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -82,7 +94,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isLoaded) return;
     applyAppearance(settings);
-    if (i18n.language !== settings.language) void i18n.changeLanguage(settings.language);
+    if (i18n.language !== settings.language)
+      void i18n.changeLanguage(settings.language);
     document.documentElement.lang = settings.language;
 
     if (settings.theme !== "system") return;
@@ -118,7 +131,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [persist, settings.language]);
 
   return (
-    <SettingsContext.Provider value={{ settings, updateSetting, resetToDefaults, isLoaded }}>
+    <SettingsContext.Provider
+      value={{ settings, updateSetting, resetToDefaults, isLoaded }}
+    >
       {children}
     </SettingsContext.Provider>
   );
@@ -126,6 +141,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
 export function useSettings() {
   const context = useContext(SettingsContext);
-  if (!context) throw new Error("useSettings must be used within SettingsProvider");
+  if (!context)
+    throw new Error("useSettings must be used within SettingsProvider");
   return context;
 }

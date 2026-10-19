@@ -187,13 +187,14 @@ export function TrayApp() {
   const panelRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(async () => {
-    const [cpuData, memData, diskData, batteryData, procData] = await Promise.all([
-      api.system.cpuUsage(),
-      api.system.memoryUsage(),
-      api.system.diskUsage(),
-      api.system.batteryInfo(),
-      api.system.topProcesses(4),
-    ]);
+    const [cpuData, memData, diskData, batteryData, procData] =
+      await Promise.all([
+        api.system.cpuUsage(),
+        api.system.memoryUsage(),
+        api.system.diskUsage(),
+        api.system.batteryInfo(),
+        api.system.topProcesses(4),
+      ]);
     setCpu(cpuData);
     setMemory(memData);
     setDisk(diskData);
@@ -210,10 +211,14 @@ export function TrayApp() {
       void api.settings
         .load()
         .then((s) => {
-          if (i18n.language !== s.language) void i18n.changeLanguage(s.language);
+          if (i18n.language !== s.language)
+            void i18n.changeLanguage(s.language);
         })
         .catch(() => undefined);
-      void api.app.stats().then(setStats).catch(() => undefined);
+      void api.app
+        .stats()
+        .then(setStats)
+        .catch(() => undefined);
     };
     sync();
     return api.tray.onShow(() => {
@@ -221,6 +226,25 @@ export function TrayApp() {
       void fetchData();
     });
   }, [i18n, fetchData]);
+
+  // The popover window stays alive while hidden; stop its animations then.
+  useEffect(() => {
+    const root = document.documentElement;
+    const update = () =>
+      root.classList.toggle(
+        "tw-paused",
+        document.visibilityState !== "visible" || !document.hasFocus(),
+      );
+    update();
+    window.addEventListener("focus", update);
+    window.addEventListener("blur", update);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      window.removeEventListener("focus", update);
+      window.removeEventListener("blur", update);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, []);
 
   // Size the native window to the content.
   useEffect(() => {
@@ -237,7 +261,8 @@ export function TrayApp() {
     setKilling((prev) => new Set(prev).add(pid));
     try {
       const result = await api.system.killProcess(pid);
-      if (result.success) setProcesses((prev) => prev.filter((p) => p.pid !== pid));
+      if (result.success)
+        setProcesses((prev) => prev.filter((p) => p.pid !== pid));
     } finally {
       setKilling((prev) => {
         const next = new Set(prev);
@@ -263,7 +288,10 @@ export function TrayApp() {
     }
     setActions((prev) => ({ ...prev, [action.id]: status }));
     if (status !== "idle") {
-      setTimeout(() => setActions((prev) => ({ ...prev, [action.id]: "idle" })), 3000);
+      setTimeout(
+        () => setActions((prev) => ({ ...prev, [action.id]: "idle" })),
+        3000,
+      );
     }
   }
 
@@ -295,13 +323,18 @@ export function TrayApp() {
         </span>
       </header>
 
-      <button className="tw-hero" onClick={() => void api.tray.openMainWindow("smart-scan")}>
+      <button
+        className="tw-hero"
+        onClick={() => void api.tray.openMainWindow("smart-scan")}
+      >
         <div className="tw-hero-orb">
           <Sparkles size={20} />
         </div>
         <div className="tw-hero-text">
           <strong>{junk > 0 ? formatBytes(junk) : healthLabel}</strong>
-          <span>{junk > 0 ? t("tray.junkFound") : t("tray.smartScanDesc")}</span>
+          <span>
+            {junk > 0 ? t("tray.junkFound") : t("tray.smartScanDesc")}
+          </span>
         </div>
         <span className="tw-hero-cta">{t("tray.cleanUp")}</span>
       </button>
@@ -310,7 +343,9 @@ export function TrayApp() {
         <Gauge
           value={cpuVal}
           label={t("tray.cpu")}
-          detail={cpu ? t("tray.userPercent", { value: cpu.user.toFixed(0) }) : "—"}
+          detail={
+            cpu ? t("tray.userPercent", { value: cpu.user.toFixed(0) }) : "—"
+          }
           icon={<Cpu size={13} />}
           from="#b18cff"
           to="#ff7ad9"
@@ -318,7 +353,11 @@ export function TrayApp() {
         <Gauge
           value={memVal}
           label={t("performance.memory")}
-          detail={memory ? t("tray.freeSpace", { space: formatBytes(memory.free) }) : "—"}
+          detail={
+            memory
+              ? t("tray.freeSpace", { space: formatBytes(memory.free) })
+              : "—"
+          }
           icon={<MemoryStick size={13} />}
           from="#4ef2d0"
           to="#1d9bf0"
@@ -326,7 +365,9 @@ export function TrayApp() {
         <Gauge
           value={diskVal}
           label={t("tray.disk")}
-          detail={disk ? t("tray.freeSpace", { space: formatBytes(disk.free) }) : "—"}
+          detail={
+            disk ? t("tray.freeSpace", { space: formatBytes(disk.free) }) : "—"
+          }
           icon={<HardDrive size={13} />}
           from="#ffb067"
           to="#ff5e8a"
@@ -364,14 +405,18 @@ export function TrayApp() {
             <div className="tw-battery-meta">
               <span>
                 {t("tray.health")}{" "}
-                <b className={`tone-${battery.condition}`}>{battery.healthPercent}%</b>
+                <b className={`tone-${battery.condition}`}>
+                  {battery.healthPercent}%
+                </b>
               </span>
               <span>
                 {t("tray.cycles")} <b>{battery.cycleCount}</b>
               </span>
-              <span>
-                {t("tray.temp")} <b>{battery.temperature.toFixed(0)}°C</b>
-              </span>
+              {battery.temperature !== null && (
+                <span>
+                  {t("tray.temp")} <b>{battery.temperature.toFixed(0)}°C</b>
+                </span>
+              )}
             </div>
           </div>
         </section>
@@ -394,7 +439,9 @@ export function TrayApp() {
                   </div>
                 </div>
                 <span className="tw-process-cpu">{proc.cpu.toFixed(1)}%</span>
-                <span className="tw-process-mem">{formatBytes(proc.memoryBytes, 0)}</span>
+                <span className="tw-process-mem">
+                  {formatBytes(proc.memoryBytes, 0)}
+                </span>
                 <button
                   className="tw-icon-btn"
                   onClick={() => void handleKill(proc.pid)}
@@ -428,7 +475,9 @@ export function TrayApp() {
               >
                 <span
                   className="tw-action-icon"
-                  style={{ background: `linear-gradient(150deg, ${action.from}, ${action.to})` }}
+                  style={{
+                    background: `linear-gradient(150deg, ${action.from}, ${action.to})`,
+                  }}
                 >
                   {st === "running" ? (
                     <Loader2 size={16} className="tw-spin" />
@@ -456,11 +505,17 @@ export function TrayApp() {
       </section>
 
       <footer className="tw-footer">
-        <button className="tw-footer-btn" onClick={() => void api.tray.openMainWindow()}>
+        <button
+          className="tw-footer-btn"
+          onClick={() => void api.tray.openMainWindow()}
+        >
           <ExternalLink size={13} />
           {t("tray.openMacSweep")}
         </button>
-        <button className="tw-footer-btn subtle" onClick={() => void api.tray.quit()}>
+        <button
+          className="tw-footer-btn subtle"
+          onClick={() => void api.tray.quit()}
+        >
           <Power size={13} />
           {t("tray.quit")}
         </button>

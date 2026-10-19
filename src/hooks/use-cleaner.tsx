@@ -38,11 +38,19 @@ export function useCleaner() {
       let freed = result.freedSpace;
       let failed = result.failedPaths;
 
-      if (result.needsAdminPaths.length > 0 && (await askForAdmin(result.needsAdminPaths.length))) {
-        const adminResult = await api.clean.filesAsAdmin(result.needsAdminPaths);
+      if (
+        result.needsAdminPaths.length > 0 &&
+        (await askForAdmin(result.needsAdminPaths.length))
+      ) {
+        const adminResult = await api.clean.filesAsAdmin(
+          result.needsAdminPaths,
+        );
         freed += adminResult.freedSpace;
         const retried = new Set(result.needsAdminPaths);
-        failed = [...failed.filter((p) => !retried.has(p)), ...adminResult.failedPaths];
+        failed = [
+          ...failed.filter((p) => !retried.has(p)),
+          ...adminResult.failedPaths,
+        ];
       }
       return { freed, failed };
     } finally {

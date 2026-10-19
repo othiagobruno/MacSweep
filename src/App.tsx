@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Sidebar } from "./components/sidebar";
 import { ErrorBoundary } from "./components/error-boundary";
@@ -35,7 +41,9 @@ function AppShell() {
   const [currentPage, setCurrentPage] = useState<Page>("smart-scan");
   // Pages mount on first visit and then stay mounted, so their state
   // (scan results, selections) survives navigation.
-  const [visited, setVisited] = useState<Set<Page>>(() => new Set(["smart-scan"]));
+  const [visited, setVisited] = useState<Set<Page>>(
+    () => new Set(["smart-scan"]),
+  );
   const [diskUsage, setDiskUsage] = useState<DiskUsage | null>(null);
   const [stats, setStats] = useState<AppStats | null>(null);
 
@@ -50,6 +58,39 @@ function AppShell() {
 
   usePolling(refreshDisk, 30_000);
 
+  // Decorative animations run while the user is engaged and pause when the
+  // window is in the background or after a short idle period: any continuous
+  // animation makes Chromium recomposite the whole window at display refresh.
+  useEffect(() => {
+    const IDLE_AFTER_MS = 12_000;
+    const root = document.documentElement;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const setIdle = (idle: boolean) => root.classList.toggle("is-idle", idle);
+    const wake = () => {
+      const active =
+        document.visibilityState === "visible" && document.hasFocus();
+      setIdle(!active);
+      clearTimeout(timer);
+      if (active) timer = setTimeout(() => setIdle(true), IDLE_AFTER_MS);
+    };
+    const events = [
+      "pointermove",
+      "pointerdown",
+      "keydown",
+      "wheel",
+      "focus",
+      "blur",
+    ] as const;
+    wake();
+    events.forEach((e) => window.addEventListener(e, wake, { passive: true }));
+    document.addEventListener("visibilitychange", wake);
+    return () => {
+      clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, wake));
+      document.removeEventListener("visibilitychange", wake);
+    };
+  }, []);
+
   useEffect(() => {
     const onRefresh = () => void refreshDisk();
     window.addEventListener(DISK_REFRESH_EVENT, onRefresh);
@@ -63,7 +104,10 @@ function AppShell() {
     };
   }, [navigate, refreshDisk]);
 
-  const navigation = useMemo(() => ({ currentPage, navigate }), [currentPage, navigate]);
+  const navigation = useMemo(
+    () => ({ currentPage, navigate }),
+    [currentPage, navigate],
+  );
 
   return (
     <NavigationContext.Provider value={navigation}>
@@ -84,7 +128,9 @@ function AppShell() {
             <span className="ambient-blob b" />
             <span className="ambient-blob c" />
           </div>
-          {!isElectron && <div className="preview-banner">{t("common.previewMode")}</div>}
+          {!isElectron && (
+            <div className="preview-banner">{t("common.previewMode")}</div>
+          )}
           {(Object.keys(PAGE_COMPONENTS) as Page[]).map((page) => {
             if (!visited.has(page)) return null;
             const PageComponent = PAGE_COMPONENTS[page];

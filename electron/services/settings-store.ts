@@ -38,7 +38,10 @@ const THEMES: ThemeId[] = ["dark", "darker", "light", "system"];
 
 /** Coerce untrusted input into a valid settings object. */
 export function sanitizeSettings(input: unknown): AppSettings {
-  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const raw = (input && typeof input === "object" ? input : {}) as Record<
+    string,
+    unknown
+  >;
   const d = DEFAULT_SETTINGS;
   const bool = (k: keyof AppSettings) =>
     typeof raw[k] === "boolean" ? (raw[k] as boolean) : (d[k] as boolean);
@@ -62,9 +65,12 @@ export function sanitizeSettings(input: unknown): AppSettings {
       : d.excludedFolders,
     skipSystemFiles: bool("skipSystemFiles"),
     scanHiddenFiles: bool("scanHiddenFiles"),
-    theme: THEMES.includes(raw.theme as ThemeId) ? (raw.theme as ThemeId) : d.theme,
+    theme: THEMES.includes(raw.theme as ThemeId)
+      ? (raw.theme as ThemeId)
+      : d.theme,
     accentColor:
-      typeof raw.accentColor === "string" && /^#[0-9a-f]{6}$/i.test(raw.accentColor)
+      typeof raw.accentColor === "string" &&
+      /^#[0-9a-f]{6}$/i.test(raw.accentColor)
         ? raw.accentColor
         : d.accentColor,
     compactSidebar: bool("compactSidebar"),
@@ -109,10 +115,15 @@ const EMPTY_STATS: AppStats = {
 };
 
 export function loadStats(): AppStats {
-  return { ...EMPTY_STATS, ...(readJson(statsPath()) as Partial<AppStats> | null) };
+  return {
+    ...EMPTY_STATS,
+    ...(readJson(statsPath()) as Partial<AppStats> | null),
+  };
 }
 
-export function updateStats(patch: (stats: AppStats) => Partial<AppStats>): AppStats {
+export function updateStats(
+  patch: (stats: AppStats) => Partial<AppStats>,
+): AppStats {
   const current = loadStats();
   const next = { ...current, ...patch(current) };
   writeJson(statsPath(), next);

@@ -227,7 +227,8 @@
       "savedState": "Gesicherter Zustand",
       "webData": "Webdaten",
       "launchAgent": "Startagent"
-    }
+    },
+    "protected": "Festplattenvollzugriff nötig"
   },
   "maintenance": {
     "title": "Wartung",

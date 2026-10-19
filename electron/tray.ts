@@ -21,53 +21,19 @@ interface TrayOptions {
 }
 
 /**
- * Create a 16x16 template icon using nativeImage.
- * Draws a simple gauge/speedometer shape.
+ * Menu bar icon: a template image (black + alpha) so macOS tints it for light
+ * and dark menu bars. "@2x" is picked up automatically on Retina displays.
+ * Source: assets/tray-icon.svg → `node scripts/gen-tray-icon.mjs`.
  */
 function createTrayIcon(): Electron.NativeImage {
-  const size = 16;
-  const buf = Buffer.alloc(size * size * 4, 0);
-
-  const cx = 7.5;
-  const cy = 8.5;
-  const R = 5.5;
-
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      const ang = (Math.atan2(-dy, dx) * 180) / Math.PI;
-      let a = 0;
-
-      // Arc
-      if (d >= 4 && d <= 7 && ang >= -10 && ang <= 190) {
-        a = Math.max(a, Math.round(255 * Math.max(0, 1 - Math.abs(d - R) / 1.3)));
-      }
-
-      // Needle at ~50 degrees
-      const na = (50 * Math.PI) / 180;
-      const nx2 = Math.cos(na);
-      const ny2 = -Math.sin(na);
-      const proj = dx * nx2 + dy * ny2;
-      const perp = Math.abs(-dx * ny2 + dy * nx2);
-      if (proj >= 0 && proj <= 4 && perp < 0.8 && dy <= 1) {
-        a = Math.max(a, Math.round(255 * Math.max(0, 1 - perp / 0.8)));
-      }
-
-      // Center dot
-      if (d < 1.3) {
-        a = Math.max(a, Math.round(255 * Math.max(0, 1 - d / 1.3)));
-      }
-
-      const i = (y * size + x) * 4;
-      buf[i + 3] = Math.min(255, a);
-    }
-  }
-
-  const img = nativeImage.createFromBuffer(buf, { width: size, height: size });
-  img.setTemplateImage(true);
-  return img;
+  const assets = app.isPackaged
+    ? path.join(process.resourcesPath, "assets")
+    : path.join(__dirname, "..", "assets");
+  const icon = nativeImage.createFromPath(
+    path.join(assets, "trayTemplate.png"),
+  );
+  icon.setTemplateImage(true);
+  return icon;
 }
 
 function createTrayWindow(): BrowserWindow {
@@ -113,8 +79,13 @@ function createTrayWindow(): BrowserWindow {
 function showTrayWindow(trayBounds: Electron.Rectangle) {
   if (!trayWindow) return;
 
-  const display = screen.getDisplayNearestPoint({ x: trayBounds.x, y: trayBounds.y });
-  const x = Math.round(trayBounds.x + trayBounds.width / 2 - TRAY_WINDOW_WIDTH / 2);
+  const display = screen.getDisplayNearestPoint({
+    x: trayBounds.x,
+    y: trayBounds.y,
+  });
+  const x = Math.round(
+    trayBounds.x + trayBounds.width / 2 - TRAY_WINDOW_WIDTH / 2,
+  );
   const y = Math.round(trayBounds.y + trayBounds.height + 6);
   const maxX = display.workArea.x + display.workArea.width - TRAY_WINDOW_WIDTH;
   const clampedX = Math.min(Math.max(x, display.workArea.x), maxX);
@@ -136,7 +107,8 @@ function registerTrayIpc(options: TrayOptions) {
   });
   ipcMain.handle("tray:quit", () => app.quit());
   ipcMain.handle("tray:resize", (_event, height: unknown) => {
-    if (!trayWindow || typeof height !== "number" || !Number.isFinite(height)) return;
+    if (!trayWindow || typeof height !== "number" || !Number.isFinite(height))
+      return;
     const display = screen.getDisplayMatching(trayWindow.getBounds());
     const max = display.workArea.height - 16;
     const next = Math.min(max, Math.max(120, Math.ceil(height)));
@@ -163,7 +135,10 @@ export function createTray(options: TrayOptions) {
     tray?.popUpContextMenu(
       Menu.buildFromTemplate([
         { label: "Open MacSweep", click: () => options.openMainWindow() },
-        { label: "Smart Scan", click: () => options.openMainWindow("smart-scan") },
+        {
+          label: "Smart Scan",
+          click: () => options.openMainWindow("smart-scan"),
+        },
         { type: "separator" },
         { label: "Quit MacSweep", role: "quit" },
       ]),

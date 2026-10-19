@@ -227,7 +227,8 @@
       "savedState": "État enregistré",
       "webData": "Données web",
       "launchAgent": "Agent de lancement"
-    }
+    },
+    "protected": "Accès complet au disque requis"
   },
   "maintenance": {
     "title": "Maintenance",

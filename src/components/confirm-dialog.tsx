@@ -60,13 +60,19 @@ export function ConfirmDialog({
         aria-labelledby="dialog-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className={`dialog-icon ${variant === "danger" ? "danger" : "warning"}`}>
+        <div
+          className={`dialog-icon ${variant === "danger" ? "danger" : "warning"}`}
+        >
           <Icon size={26} />
         </div>
         <h3 id="dialog-title">{title}</h3>
         <div className="dialog-message">{message}</div>
         <div className="dialog-actions">
-          <button ref={cancelRef} className="btn btn-secondary" onClick={onCancel}>
+          <button
+            ref={cancelRef}
+            className="btn btn-secondary"
+            onClick={onCancel}
+          >
             {cancelLabel || t("common.cancel")}
           </button>
           <button

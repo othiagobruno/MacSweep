@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Box,
+  Lock,
   ChevronRight,
   FolderSearch,
   Package,
@@ -103,7 +104,14 @@ export function Uninstaller() {
     const leftovers = await api.apps.leftovers(app).catch(() => []);
     setExpanded((prev) =>
       prev?.app.path === app.path
-        ? { app, leftovers, selected: new Set(leftovers.map((l) => l.path)) }
+        ? {
+            app,
+            leftovers,
+            // Protected items can't be removed without Full Disk Access.
+            selected: new Set(
+              leftovers.filter((l) => !l.protected).map((l) => l.path),
+            ),
+          }
         : prev,
     );
   }
@@ -353,9 +361,23 @@ export function Uninstaller() {
                                 >
                                   <FolderSearch size={14} />
                                 </button>
-                                <span className="leftover-size">
-                                  {formatBytes(l.size)}
-                                </span>
+                                {l.protected ? (
+                                  <button
+                                    className="tag tag-muted leftover-protected"
+                                    title={t("errors.fullDiskAccessDesc")}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void api.shell.openFullDiskAccessSettings();
+                                    }}
+                                  >
+                                    <Lock size={10} />
+                                    {t("uninstaller.protected")}
+                                  </button>
+                                ) : (
+                                  <span className="leftover-size">
+                                    {formatBytes(l.size)}
+                                  </span>
+                                )}
                               </div>
                             ))
                           )}

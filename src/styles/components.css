@@ -1084,3 +1084,12 @@ textarea,
     transition-duration: 0.01ms !important;
   }
 }
+
+.leftover-protected {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}

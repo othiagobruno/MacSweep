@@ -2,16 +2,22 @@ import { describe, expect, it, vi } from "vitest";
 
 // Services import electron for side effects; the pure helpers don't need it.
 vi.mock("electron", () => ({
-  app: { getName: () => "MacSweep", getPath: () => "/tmp", getLocale: () => "en" },
+  app: {
+    getName: () => "MacSweep",
+    getPath: () => "/tmp",
+    getLocale: () => "en",
+  },
   shell: {},
 }));
 
-const { buildFindArgs, fileKind, parseStatLines } = await import("../electron/services/large-files");
-const { memoryFromVmStat, parseVmStat } = await import("../electron/services/system-info");
-const { parseDisabledOverrides, resolveDisplayName } = await import(
-  "../electron/services/startup-items"
-);
-const { isLeftoverMatch } = await import("../electron/services/apps");
+const { buildFindArgs, fileKind, parseStatLines } =
+  await import("../electron/services/large-files");
+const { memoryFromVmStat, parseVmStat } =
+  await import("../electron/services/system-info");
+const { parseDisabledOverrides, resolveDisplayName } =
+  await import("../electron/services/startup-items");
+const { isLeftoverMatch, isLeftoverPath } =
+  await import("../electron/services/apps");
 const { shellQuote } = await import("../electron/services/exec");
 
 describe("large files", () => {
@@ -22,9 +28,15 @@ describe("large files", () => {
   });
 
   it("parses stat output including paths with pipes", () => {
-    const files = parseStatLines("1048576|1700000000|1700000100|/Users/a/b|c.mp4\nbad line\n");
+    const files = parseStatLines(
+      "1048576|1700000000|1700000100|/Users/a/b|c.mp4\nbad line\n",
+    );
     expect(files).toHaveLength(1);
-    expect(files[0]).toMatchObject({ size: 1048576, name: "b|c.mp4", kind: "video" });
+    expect(files[0]).toMatchObject({
+      size: 1048576,
+      name: "b|c.mp4",
+      kind: "video",
+    });
   });
 
   it("builds find arguments without shell interpolation", () => {
@@ -87,8 +99,15 @@ describe("startup items", () => {
   });
 
   it("derives friendly names", () => {
-    expect(resolveDisplayName("com.docker.helper", "/Applications/Docker.app/Contents/MacOS/x")).toBe("Docker");
-    expect(resolveDisplayName("com.google.keystone.agent", "/usr/bin/x")).toBe("Keystone Agent");
+    expect(
+      resolveDisplayName(
+        "com.docker.helper",
+        "/Applications/Docker.app/Contents/MacOS/x",
+      ),
+    ).toBe("Docker");
+    expect(resolveDisplayName("com.google.keystone.agent", "/usr/bin/x")).toBe(
+      "Keystone Agent",
+    );
   });
 });
 
@@ -113,5 +132,23 @@ describe("shellQuote", () => {
   it("neutralizes shell metacharacters", () => {
     expect(shellQuote("a'b")).toBe(`'a'\\''b'`);
     expect(shellQuote("$(rm -rf ~)")).toBe("'$(rm -rf ~)'");
+  });
+});
+
+describe("vendor folder leftovers", () => {
+  const chrome = { name: "Google Chrome", bundleId: "com.google.Chrome" };
+  const support = "/Users/a/Library/Application Support";
+
+  it("matches <vendor>/<app> folders", () => {
+    expect(isLeftoverPath(`${support}/Google/Chrome`, chrome)).toBe(true);
+    expect(isLeftoverPath(`${support}/Google/Google Chrome`, chrome)).toBe(true);
+  });
+
+  it("never matches the shared vendor folder or sibling apps", () => {
+    expect(isLeftoverPath(`${support}/Google`, chrome)).toBe(false);
+    expect(
+      isLeftoverPath(`${support}/Google/AndroidStudio2026.2.1`, chrome),
+    ).toBe(false);
+    expect(isLeftoverPath(`${support}/Other/Chrome`, chrome)).toBe(false);
   });
 });

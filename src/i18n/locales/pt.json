@@ -227,7 +227,8 @@
       "savedState": "Estado salvo",
       "webData": "Dados da web",
       "launchAgent": "Agente de inicialização"
-    }
+    },
+    "protected": "Requer Acesso Total ao Disco"
   },
   "maintenance": {
     "title": "Manutenção",

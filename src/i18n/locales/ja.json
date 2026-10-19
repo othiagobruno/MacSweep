@@ -227,7 +227,8 @@
       "savedState": "保存された状態",
       "webData": "Webデータ",
       "launchAgent": "起動エージェント"
-    }
+    },
+    "protected": "フルディスクアクセスが必要"
   },
   "maintenance": {
     "title": "メンテナンス",

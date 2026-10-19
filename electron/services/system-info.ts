@@ -130,7 +130,13 @@ export async function getDiskUsage(): Promise<DiskUsage> {
     if (total && free) {
       const t = parseInt(total[1], 10);
       const f = parseInt(free[1], 10);
-      return { total: t, used: t - f, free: f, percentUsed: ((t - f) / t) * 100, mount: "/" };
+      return {
+        total: t,
+        used: t - f,
+        free: f,
+        percentUsed: ((t - f) / t) * 100,
+        mount: "/",
+      };
     }
   }
 
@@ -140,7 +146,13 @@ export async function getDiskUsage(): Promise<DiskUsage> {
     const total = parseInt(parts[1], 10) * 1024;
     const free = parseInt(parts[3], 10) * 1024;
     if (total > 0) {
-      return { total, used: total - free, free, percentUsed: ((total - free) / total) * 100, mount: "/" };
+      return {
+        total,
+        used: total - free,
+        free,
+        percentUsed: ((total - free) / total) * 100,
+        mount: "/",
+      };
     }
   }
   return { total: 0, used: 0, free: 0, percentUsed: 0, mount: "/" };
@@ -195,8 +207,14 @@ export function parseBattery(stdout: string): BatteryInfo | null {
     isCharging: flag("IsCharging"),
     isFullyCharged: flag("FullyCharged"),
     condition:
-      healthPercent < 60 ? "replaceSoon" : healthPercent < 80 ? "fair" : "normal",
-    temperature: num("Temperature") / 100,
+      healthPercent < 60
+        ? "replaceSoon"
+        : healthPercent < 80
+          ? "fair"
+          : "normal",
+    temperature: /"Temperature"\s*=/.test(stdout)
+      ? num("Temperature") / 100
+      : null,
     healthPercent,
   };
 }
@@ -209,17 +227,59 @@ export async function getBatteryInfo(): Promise<BatteryInfo | null> {
 /* ── Processes ─────────────────────────────────────── */
 
 const SYSTEM_PROCESSES = new Set([
-  "kernel_task", "WindowServer", "launchd", "loginwindow", "hidd",
-  "UserEventAgent", "distnoted", "trustd", "opendirectoryd", "syslogd",
-  "mds", "mds_stores", "mdworker", "mdworker_shared", "cfprefsd",
-  "filecoordinationd", "powerd", "corebrightnessd", "bluetoothd",
-  "airportd", "coreaudiod", "audioclocksyncd", "displaypolicyd",
-  "thermalmonitord", "systemstats", "watchdogd", "containermanagerd",
-  "symptomsd", "coreservicesd", "notifyd", "logd", "contextstored", "lsd",
-  "pboard", "iconservicesagent", "securityd", "taskgated",
-  "diskarbitrationd", "fseventsd", "configd", "usermanagerd", "revisiond",
-  "remoted", "rapportd", "mediaremoted", "CommCenter", "dasd",
-  "runningboardd", "sharingd", "ctkd", "nsurlsessiond", "cloudd", "ps",
+  "kernel_task",
+  "WindowServer",
+  "launchd",
+  "loginwindow",
+  "hidd",
+  "UserEventAgent",
+  "distnoted",
+  "trustd",
+  "opendirectoryd",
+  "syslogd",
+  "mds",
+  "mds_stores",
+  "mdworker",
+  "mdworker_shared",
+  "cfprefsd",
+  "filecoordinationd",
+  "powerd",
+  "corebrightnessd",
+  "bluetoothd",
+  "airportd",
+  "coreaudiod",
+  "audioclocksyncd",
+  "displaypolicyd",
+  "thermalmonitord",
+  "systemstats",
+  "watchdogd",
+  "containermanagerd",
+  "symptomsd",
+  "coreservicesd",
+  "notifyd",
+  "logd",
+  "contextstored",
+  "lsd",
+  "pboard",
+  "iconservicesagent",
+  "securityd",
+  "taskgated",
+  "diskarbitrationd",
+  "fseventsd",
+  "configd",
+  "usermanagerd",
+  "revisiond",
+  "remoted",
+  "rapportd",
+  "mediaremoted",
+  "CommCenter",
+  "dasd",
+  "runningboardd",
+  "sharingd",
+  "ctkd",
+  "nsurlsessiond",
+  "cloudd",
+  "ps",
 ]);
 
 export async function getTopProcesses(limit = 5): Promise<ProcessInfo[]> {

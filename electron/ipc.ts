@@ -38,9 +38,15 @@ import {
   updateStats,
 } from "./services/settings-store";
 import { diskSize, run } from "./services/exec";
-import type { AppMeta, AppSettings, AppStats, CleanResult } from "../shared/types";
+import type {
+  AppMeta,
+  AppSettings,
+  AppStats,
+  CleanResult,
+} from "../shared/types";
 
-export const RELEASES_URL = "https://github.com/othiagobruno/cleanmymac/releases";
+export const RELEASES_URL =
+  "https://github.com/othiagobruno/cleanmymac/releases";
 
 interface IpcHooks {
   onSettingsChanged: (previous: AppSettings, next: AppSettings) => void;
@@ -91,7 +97,8 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
     const results = await scanSystemJunk({
       ownCacheNames: [app.getName()],
       onProgress: (progress) => {
-        if (!event.sender.isDestroyed()) event.sender.send("scan:progress", progress);
+        if (!event.sender.isDestroyed())
+          event.sender.send("scan:progress", progress);
       },
     });
     const junk = results
@@ -110,7 +117,9 @@ export function registerIpcHandlers(hooks: IpcHooks): void {
   handle("scan:startupItems", () => scanStartupItems());
 
   /* Cleaning */
-  handle("clean:files", async (_e, paths) => recordClean(await cleanFiles(paths)));
+  handle("clean:files", async (_e, paths) =>
+    recordClean(await cleanFiles(paths)),
+  );
   handle("clean:filesAsAdmin", async (_e, paths) =>
     recordClean(await cleanFilesAsAdmin(paths)),
   );

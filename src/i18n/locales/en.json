@@ -227,7 +227,8 @@
       "savedState": "Saved state",
       "webData": "Web data",
       "launchAgent": "Launch agent"
-    }
+    },
+    "protected": "Needs Full Disk Access"
   },
   "maintenance": {
     "title": "Maintenance",

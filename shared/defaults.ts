@@ -17,10 +17,19 @@ export const DEFAULT_SETTINGS: AppSettings = {
   animationsEnabled: true,
 };
 
-export const SUPPORTED_LANGUAGES = ["en", "pt", "es", "fr", "de", "ja"] as const;
+export const SUPPORTED_LANGUAGES = [
+  "en",
+  "pt",
+  "es",
+  "fr",
+  "de",
+  "ja",
+] as const;
 
 /** Pick the best supported language for a system locale such as "pt-BR". */
 export function languageFromLocale(locale: string): string {
   const base = locale.toLowerCase().split(/[-_]/)[0];
-  return (SUPPORTED_LANGUAGES as readonly string[]).includes(base) ? base : "en";
+  return (SUPPORTED_LANGUAGES as readonly string[]).includes(base)
+    ? base
+    : "en";
 }

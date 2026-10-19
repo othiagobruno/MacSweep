@@ -19,7 +19,11 @@ const SOURCES: Array<{
   kind: StartupItem["kind"];
   scope: StartupItem["scope"];
 }> = [
-  { dir: path.join(homeDir, "Library", "LaunchAgents"), kind: "LaunchAgent", scope: "user" },
+  {
+    dir: path.join(homeDir, "Library", "LaunchAgents"),
+    kind: "LaunchAgent",
+    scope: "user",
+  },
   { dir: "/Library/LaunchAgents", kind: "LaunchAgent", scope: "user" },
   { dir: "/Library/LaunchDaemons", kind: "LaunchDaemon", scope: "system" },
 ];
@@ -71,8 +75,16 @@ export function parseDisabledOverrides(stdout: string): Map<string, boolean> {
   return map;
 }
 
-async function readPlist(plistPath: string): Promise<Record<string, unknown> | null> {
-  const out = await tryRun("plutil", ["-convert", "json", "-o", "-", plistPath]);
+async function readPlist(
+  plistPath: string,
+): Promise<Record<string, unknown> | null> {
+  const out = await tryRun("plutil", [
+    "-convert",
+    "json",
+    "-o",
+    "-",
+    plistPath,
+  ]);
   if (!out) return null;
   try {
     return JSON.parse(out) as Record<string, unknown>;
@@ -90,11 +102,16 @@ async function parseItem(
   if (!data) return null;
 
   const label =
-    typeof data.Label === "string" ? data.Label : path.basename(plistPath, ".plist");
+    typeof data.Label === "string"
+      ? data.Label
+      : path.basename(plistPath, ".plist");
   let programPath = "";
   if (typeof data.Program === "string") {
     programPath = data.Program;
-  } else if (Array.isArray(data.ProgramArguments) && data.ProgramArguments.length > 0) {
+  } else if (
+    Array.isArray(data.ProgramArguments) &&
+    data.ProgramArguments.length > 0
+  ) {
     programPath = String(data.ProgramArguments[0]);
   }
 
@@ -129,7 +146,8 @@ export async function scanStartupItems(): Promise<StartupItem[]> {
       } catch {
         return [];
       }
-      const overrides = source.scope === "system" ? systemOverrides : userOverrides;
+      const overrides =
+        source.scope === "system" ? systemOverrides : userOverrides;
       const items = await Promise.all(
         names
           .filter((f) => f.endsWith(".plist"))
@@ -173,7 +191,10 @@ export async function setStartupItemEnabled(
       const cmd = enabled
         ? `launchctl enable ${shellQuote(target)}; launchctl bootstrap ${domain} ${shellQuote(plistPath)} 2>/dev/null; true`
         : `launchctl disable ${shellQuote(target)}; launchctl bootout ${shellQuote(target)} 2>/dev/null; true`;
-      await runAsAdmin(cmd, "MacSweep needs your password to change a system startup item.");
+      await runAsAdmin(
+        cmd,
+        "MacSweep needs your password to change a system startup item.",
+      );
     } else {
       await run("launchctl", [enabled ? "enable" : "disable", target]);
       if (enabled) {

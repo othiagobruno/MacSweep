@@ -1,7 +1,10 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import type { ElectronAPI, Unsubscribe } from "../shared/api";
 
-function subscribe<T>(channel: string, callback: (payload: T) => void): Unsubscribe {
+function subscribe<T>(
+  channel: string,
+  callback: (payload: T) => void,
+): Unsubscribe {
   const listener = (_event: IpcRendererEvent, payload: T) => callback(payload);
   ipcRenderer.on(channel, listener);
   return () => ipcRenderer.removeListener(channel, listener);

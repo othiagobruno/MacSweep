@@ -4,7 +4,10 @@ export function formatBytes(bytes: number, decimals = 1): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k)));
+  const i = Math.min(
+    sizes.length - 1,
+    Math.floor(Math.log(bytes) / Math.log(k)),
+  );
   const value = bytes / Math.pow(k, i);
   return `${parseFloat(value.toFixed(i === 0 ? 0 : decimals))} ${sizes[i]}`;
 }
@@ -49,7 +52,9 @@ export function formatRelative(
   if (!isoString) return null;
   const then = new Date(isoString).getTime();
   if (!Number.isFinite(then)) return null;
-  const rtf = new Intl.RelativeTimeFormat(localeFor(language), { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat(localeFor(language), {
+    numeric: "auto",
+  });
   const diffSec = Math.round((then - now) / 1000);
   const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
     ["year", 31_536_000],
@@ -76,7 +81,10 @@ export function formatDuration(totalSeconds: number): string {
   return `${minutes}m`;
 }
 
-export function daysSince(isoString: string | null, now = Date.now()): number | null {
+export function daysSince(
+  isoString: string | null,
+  now = Date.now(),
+): number | null {
   if (!isoString) return null;
   const then = new Date(isoString).getTime();
   return Number.isFinite(then) ? Math.floor((now - then) / 86_400_000) : null;

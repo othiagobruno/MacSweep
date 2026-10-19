@@ -99,10 +99,18 @@ export async function mapLimit<T, R>(
   return results;
 }
 
-/** Size on disk in bytes using `du`, which is far faster than walking in JS. */
+/**
+ * Size on disk in bytes using `du`, which is far faster than walking in JS.
+ * `du` exits non-zero when any single entry is unreadable but still prints
+ * the total for everything else, so that partial total is used.
+ */
 export async function diskSize(target: string): Promise<number> {
-  const out = await tryRun("du", ["-sk", target]);
-  if (!out) return 0;
+  let out: string;
+  try {
+    out = await run("du", ["-sk", target]);
+  } catch (err) {
+    out = (err as { stdout?: string }).stdout ?? "";
+  }
   const kb = parseInt(out.split("\t")[0], 10);
   return Number.isFinite(kb) ? kb * 1024 : 0;
 }

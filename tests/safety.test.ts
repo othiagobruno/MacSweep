@@ -36,7 +36,9 @@ describe("checkDeletable", () => {
 
   it("refuses relative and non-normalized paths", () => {
     expect(checkDeletable("Library/Caches/x", ctx).ok).toBe(false);
-    expect(checkDeletable("/Users/demo/Library/Caches/../../Documents", ctx).ok).toBe(false);
+    expect(
+      checkDeletable("/Users/demo/Library/Caches/../../Documents", ctx).ok,
+    ).toBe(false);
     expect(checkDeletable("", ctx).ok).toBe(false);
   });
 

@@ -1,10 +1,7 @@
 import os from "node:os";
 import { errorMessage, isCancelled, run, runAsAdmin } from "./exec";
 import { getMemoryUsage } from "./system-info";
-import type {
-  MaintenanceResult,
-  MaintenanceTaskId,
-} from "../../shared/types";
+import type { MaintenanceResult, MaintenanceTaskId } from "../../shared/types";
 
 const LSREGISTER =
   "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
@@ -12,7 +9,8 @@ const LSREGISTER =
 /** Commands that must run as root. Static strings only — no user input. */
 const ADMIN_COMMANDS: Partial<Record<MaintenanceTaskId, string>> = {
   freeRam: "/usr/sbin/purge",
-  flushDns: "/usr/bin/dscacheutil -flushcache; /usr/bin/killall -HUP mDNSResponder",
+  flushDns:
+    "/usr/bin/dscacheutil -flushcache; /usr/bin/killall -HUP mDNSResponder",
   rebuildSpotlight: "/usr/bin/mdutil -E /",
   thinSnapshots: "/usr/bin/tmutil thinlocalsnapshots / 999999999999 4",
 };
@@ -56,17 +54,25 @@ export async function runMaintenance(
   // Non-privileged tasks
   if (tasks.includes("rebuildLaunchServices")) {
     try {
-      await run(LSREGISTER, [
-        "-kill",
-        "-r",
-        "-domain",
-        "local",
-        "-domain",
-        "system",
-        "-domain",
-        "user",
-      ], { timeout: 5 * 60 * 1000 });
-      results.push({ taskId: "rebuildLaunchServices", success: true, cancelled: false });
+      await run(
+        LSREGISTER,
+        [
+          "-kill",
+          "-r",
+          "-domain",
+          "local",
+          "-domain",
+          "system",
+          "-domain",
+          "user",
+        ],
+        { timeout: 5 * 60 * 1000 },
+      );
+      results.push({
+        taskId: "rebuildLaunchServices",
+        success: true,
+        cancelled: false,
+      });
     } catch (err) {
       results.push({
         taskId: "rebuildLaunchServices",
@@ -80,7 +86,9 @@ export async function runMaintenance(
   const adminTasks = tasks.filter((id) => adminCommandFor(id) !== null);
   if (adminTasks.length === 0) return results;
 
-  const memBefore = adminTasks.includes("freeRam") ? await getMemoryUsage() : null;
+  const memBefore = adminTasks.includes("freeRam")
+    ? await getMemoryUsage()
+    : null;
 
   // Each task writes a marker so we can tell which ones succeeded.
   const script = adminTasks
@@ -111,7 +119,11 @@ export async function runMaintenance(
 
   for (const id of adminTasks) {
     const ok = output.includes(`ok:${id}`);
-    const result: MaintenanceResult = { taskId: id, success: ok, cancelled: false };
+    const result: MaintenanceResult = {
+      taskId: id,
+      success: ok,
+      cancelled: false,
+    };
     if (ok && id === "freeRam" && memBefore) {
       const memAfter = await getMemoryUsage();
       const reclaimed = Math.max(0, memBefore.used - memAfter.used);

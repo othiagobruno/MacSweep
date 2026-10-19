@@ -1,6 +1,10 @@
 import { app, Notification } from "electron";
 import { scanSystemJunk } from "./services/scanner";
-import { loadSettings, loadStats, updateStats } from "./services/settings-store";
+import {
+  loadSettings,
+  loadStats,
+  updateStats,
+} from "./services/settings-store";
 import type { AppStats } from "../shared/types";
 
 const CHECK_EVERY_MS = 60 * 60 * 1000;
@@ -9,17 +13,37 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const NOTIFY_THRESHOLD = 500 * 1024 * 1024;
 
 const MESSAGES: Record<string, { title: string; body: string }> = {
-  en: { title: "Time for a cleanup", body: "MacSweep found {size} of junk you can safely remove." },
-  pt: { title: "Hora de uma limpeza", body: "O MacSweep encontrou {size} de lixo que pode ser removido com segurança." },
-  es: { title: "Hora de limpiar", body: "MacSweep encontró {size} de basura que puedes eliminar con seguridad." },
-  fr: { title: "C'est l'heure du ménage", body: "MacSweep a trouvé {size} de fichiers inutiles à supprimer en toute sécurité." },
-  de: { title: "Zeit zum Aufräumen", body: "MacSweep hat {size} Datenmüll gefunden, der sicher entfernt werden kann." },
-  ja: { title: "クリーンアップの時間です", body: "MacSweep が安全に削除できる {size} の不要ファイルを見つけました。" },
+  en: {
+    title: "Time for a cleanup",
+    body: "MacSweep found {size} of junk you can safely remove.",
+  },
+  pt: {
+    title: "Hora de uma limpeza",
+    body: "O MacSweep encontrou {size} de lixo que pode ser removido com segurança.",
+  },
+  es: {
+    title: "Hora de limpiar",
+    body: "MacSweep encontró {size} de basura que puedes eliminar con seguridad.",
+  },
+  fr: {
+    title: "C'est l'heure du ménage",
+    body: "MacSweep a trouvé {size} de fichiers inutiles à supprimer en toute sécurité.",
+  },
+  de: {
+    title: "Zeit zum Aufräumen",
+    body: "MacSweep hat {size} Datenmüll gefunden, der sicher entfernt werden kann.",
+  },
+  ja: {
+    title: "クリーンアップの時間です",
+    body: "MacSweep が安全に削除できる {size} の不要ファイルを見つけました。",
+  },
 };
 
 function formatSize(bytes: number): string {
   const gb = bytes / 1024 ** 3;
-  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`;
+  return gb >= 1
+    ? `${gb.toFixed(1)} GB`
+    : `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
 interface SchedulerOptions {
@@ -59,7 +83,11 @@ async function tick(options: SchedulerOptions): Promise<void> {
       })),
     );
 
-    if (settings.notifications && junk >= NOTIFY_THRESHOLD && Notification.isSupported()) {
+    if (
+      settings.notifications &&
+      junk >= NOTIFY_THRESHOLD &&
+      Notification.isSupported()
+    ) {
       const msg = MESSAGES[settings.language] ?? MESSAGES.en;
       const notification = new Notification({
         title: msg.title,

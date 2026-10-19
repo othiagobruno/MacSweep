@@ -44,7 +44,13 @@ interface SwitchProps {
   disabled?: boolean;
 }
 
-export function Switch({ checked, onChange, label, busy, disabled }: SwitchProps) {
+export function Switch({
+  checked,
+  onChange,
+  label,
+  busy,
+  disabled,
+}: SwitchProps) {
   return (
     <button
       type="button"

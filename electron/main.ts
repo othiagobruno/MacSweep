@@ -107,7 +107,11 @@ function broadcastStats(stats: AppStats): void {
 }
 
 function buildMenu(): void {
-  const nav = (page: Page, label: string, accelerator: string): MenuItemConstructorOptions => ({
+  const nav = (
+    page: Page,
+    label: string,
+    accelerator: string,
+  ): MenuItemConstructorOptions => ({
     label,
     accelerator,
     click: () => showMainWindow(page),
@@ -147,7 +151,11 @@ function buildMenu(): void {
       label: "View",
       submenu: [
         ...(isDev
-          ? ([{ role: "reload" }, { role: "toggleDevTools" }, { type: "separator" }] as MenuItemConstructorOptions[])
+          ? ([
+              { role: "reload" },
+              { role: "toggleDevTools" },
+              { type: "separator" },
+            ] as MenuItemConstructorOptions[])
           : []),
         { role: "togglefullscreen" },
       ],
@@ -156,7 +164,10 @@ function buildMenu(): void {
     {
       role: "help",
       submenu: [
-        { label: "MacSweep Releases", click: () => void shell.openExternal(RELEASES_URL) },
+        {
+          label: "MacSweep Releases",
+          click: () => void shell.openExternal(RELEASES_URL),
+        },
       ],
     },
   ];
@@ -173,7 +184,10 @@ function applyNativeTheme(): void {
 function applySystemIntegrations(): void {
   const settings = loadSettings();
   if (app.isPackaged) {
-    app.setLoginItemSettings({ openAtLogin: settings.launchAtLogin, openAsHidden: true });
+    app.setLoginItemSettings({
+      openAtLogin: settings.launchAtLogin,
+      openAsHidden: true,
+    });
   }
   if (settings.showInMenuBar) {
     createTray({ openMainWindow: showMainWindow });

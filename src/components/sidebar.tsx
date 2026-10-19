@@ -31,7 +31,12 @@ function diskTone(percentUsed: number): string {
   return "";
 }
 
-export function Sidebar({ currentPage, onNavigate, diskUsage, junkBadge }: SidebarProps) {
+export function Sidebar({
+  currentPage,
+  onNavigate,
+  diskUsage,
+  junkBadge,
+}: SidebarProps) {
   const { t } = useTranslation();
 
   return (
@@ -66,7 +71,9 @@ export function Sidebar({ currentPage, onNavigate, diskUsage, junkBadge }: Sideb
               </span>
               <span className="sidebar-item-label">{label}</span>
               {item.id === "smart-scan" && junkBadge > 0 && (
-                <span className="sidebar-badge">{formatBytes(junkBadge, 0)}</span>
+                <span className="sidebar-badge">
+                  {formatBytes(junkBadge, 0)}
+                </span>
               )}
             </button>
           );
@@ -77,11 +84,16 @@ export function Sidebar({ currentPage, onNavigate, diskUsage, junkBadge }: Sideb
         <div className="sidebar-disk-info">
           <div className="sidebar-disk-label">
             <span>
-              <HardDrive size={12} style={{ marginRight: 4, verticalAlign: -2 }} />
+              <HardDrive
+                size={12}
+                style={{ marginRight: 4, verticalAlign: -2 }}
+              />
               {t("sidebar.macintoshHD")}
             </span>
             <span>
-              {diskUsage ? t("sidebar.freeSpace", { space: formatBytes(diskUsage.free) }) : "…"}
+              {diskUsage
+                ? t("sidebar.freeSpace", { space: formatBytes(diskUsage.free) })
+                : "…"}
             </span>
           </div>
           <div

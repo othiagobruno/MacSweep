@@ -1293,7 +1293,8 @@ body {
   left: 50%;
   transform: translateX(-50%);
   animation: particle-pulse 2s ease-in-out infinite;
-  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-secondary) 80%, transparent);
+  box-shadow: 0 0 12px
+    color-mix(in srgb, var(--accent-secondary) 80%, transparent);
 }
 
 .particle-2 {
@@ -1302,7 +1303,8 @@ body {
   bottom: 12%;
   right: 8%;
   animation: particle-pulse 2s ease-in-out infinite 0.7s;
-  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-secondary) 60%, transparent);
+  box-shadow: 0 0 8px
+    color-mix(in srgb, var(--accent-secondary) 60%, transparent);
 }
 
 .particle-3 {
@@ -1311,7 +1313,8 @@ body {
   bottom: 15%;
   left: 6%;
   animation: particle-pulse 2s ease-in-out infinite 1.3s;
-  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-primary) 70%, transparent);
+  box-shadow: 0 0 10px
+    color-mix(in srgb, var(--accent-primary) 70%, transparent);
 }
 
 @keyframes particle-pulse {
