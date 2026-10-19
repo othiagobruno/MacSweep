@@ -44,6 +44,7 @@
   --transition-slow: 0.4s ease;
 
   font-family:
+    "Inter Variable",
     "Inter",
     -apple-system,
     BlinkMacSystemFont,
@@ -2289,17 +2290,6 @@ body {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.8;
-}
-
-.btn-danger {
-  background: rgba(255, 107, 107, 0.12);
-  color: var(--danger);
-  border: 1px solid rgba(255, 107, 107, 0.2);
-}
-
-.btn-danger:hover {
-  background: rgba(255, 107, 107, 0.2);
-  border-color: rgba(255, 107, 107, 0.3);
 }
 
 /* === COMPACT SIDEBAR === */

@@ -2,8 +2,8 @@ import {
   app,
   BrowserWindow,
   Menu,
-  nativeImage,
   nativeTheme,
+  nativeImage,
   shell,
   type MenuItemConstructorOptions,
 } from "electron";
@@ -30,14 +30,6 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
 }
 
-function backgroundColor(): string {
-  const { theme } = loadSettings();
-  const light =
-    theme === "light" || (theme === "system" && !nativeTheme.shouldUseDarkColors);
-  if (light) return "#f5f5f7";
-  return theme === "darker" ? "#020204" : "#0a0a0f";
-}
-
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     icon: iconPath,
@@ -47,8 +39,11 @@ function createWindow(): BrowserWindow {
     minHeight: 640,
     show: false,
     titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 18 },
-    backgroundColor: backgroundColor(),
+    trafficLightPosition: { x: 18, y: 20 },
+    // Native translucent sidebar; the page area paints its own background.
+    vibrancy: "sidebar",
+    visualEffectState: "followWindow",
+    backgroundColor: "#00000000",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
@@ -168,6 +163,13 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+/** Keep native chrome (vibrancy, menus, dialogs) in sync with the app theme. */
+function applyNativeTheme(): void {
+  const { theme } = loadSettings();
+  nativeTheme.themeSource =
+    theme === "light" ? "light" : theme === "system" ? "system" : "dark";
+}
+
 function applySystemIntegrations(): void {
   const settings = loadSettings();
   if (app.isPackaged) {
@@ -210,6 +212,7 @@ if (!app.requestSingleInstanceLock()) {
 
     registerIpcHandlers({
       onSettingsChanged: (previous, next) => {
+        if (previous.theme !== next.theme) applyNativeTheme();
         if (
           previous.launchAtLogin !== next.launchAtLogin ||
           previous.showInMenuBar !== next.showInMenuBar
@@ -221,6 +224,7 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     buildMenu();
+    applyNativeTheme();
 
     // Launched hidden at login: stay in the menu bar until summoned.
     const openedAtLogin = app.getLoginItemSettings().wasOpenedAsHidden;

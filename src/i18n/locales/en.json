@@ -379,5 +379,47 @@
     "good": "Good",
     "userPercent": "{{value}}% user",
     "freeSpace": "{{space}} free"
+  },
+  "hero": {
+    "smart-scan": {
+      "kicker": "Smart Scan",
+      "title": "Your Mac, fresh in one click",
+      "subtitle": "MacSweep checks caches, logs, Trash and system health at once, then tells you exactly what it can safely clean.",
+      "f1": "Finds gigabytes of hidden junk",
+      "f2": "Checks memory, disk and startup health",
+      "f3": "Never touches your personal files"
+    },
+    "system-junk": {
+      "kicker": "Cleanup",
+      "title": "Clear out the clutter",
+      "subtitle": "Caches, logs and leftovers pile up silently. Review every item before it goes.",
+      "f1": "App caches and log files",
+      "f2": "Xcode and developer caches",
+      "f3": "Trash and forgotten downloads"
+    },
+    "large-files": {
+      "kicker": "Space Lens",
+      "title": "Find what's eating your disk",
+      "subtitle": "Hunt down huge videos, archives and disk images hiding in your home folder.",
+      "f1": "Filter by type and size",
+      "f2": "Preview with Quick Look",
+      "f3": "Safely moved to the Trash"
+    },
+    "uninstaller": {
+      "kicker": "Applications",
+      "title": "Remove apps completely",
+      "subtitle": "Dragging an app to the Trash leaves its files behind. MacSweep finds them all.",
+      "f1": "Detects related support files",
+      "f2": "Spots apps you never use",
+      "f3": "Everything goes to the Trash first"
+    },
+    "startup-items": {
+      "kicker": "Optimization",
+      "title": "Speed up your startup",
+      "subtitle": "Background agents launch silently with your Mac. Decide which ones deserve to run.",
+      "f1": "User and system agents",
+      "f2": "Turn items on or off instantly",
+      "f3": "Reversible at any time"
+    }
   }
 }

@@ -9,3 +9,6 @@ export const isElectron = typeof window !== "undefined" && !!window.electronAPI;
  * a realistic in-memory mock is used so the UI can be developed in a browser.
  */
 export const api: ElectronAPI = window.electronAPI ?? createMockApi();
+
+// Lets CSS know it can rely on native window vibrancy behind the sidebar.
+if (isElectron) document.documentElement.classList.add("is-electron");

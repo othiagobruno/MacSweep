@@ -177,34 +177,29 @@ export function Uninstaller() {
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <PageHeader
-          title={t("uninstaller.title")}
-          subtitle={t("uninstaller.subtitle")}
-          actions={
-            phase === "results" && (
-              <button
-                className="btn btn-sm btn-secondary"
-                onClick={scan}
-                disabled={removing !== null}
-              >
-                <RotateCcw size={14} />
-                {t("common.rescan")}
-              </button>
-            )
-          }
-        />
-
-        {phase === "idle" && (
-          <ScanHero
-            icon={<Package size={36} />}
-            label={t("common.scan")}
-            hint={t("uninstaller.scanStatus")}
-            onScan={scan}
+        {phase !== "idle" && (
+          <PageHeader
+            title={t("uninstaller.title")}
+            subtitle={t("uninstaller.subtitle")}
+            actions={
+              phase === "results" && (
+                <button
+                  className="btn btn-sm btn-secondary"
+                  onClick={scan}
+                  disabled={removing !== null}
+                >
+                  <RotateCcw size={14} />
+                  {t("common.rescan")}
+                </button>
+              )
+            }
           />
         )}
 
+        {phase === "idle" && <ScanHero page="uninstaller" onScan={scan} />}
+
         {phase === "scanning" && (
-          <ScanningState label={t("uninstaller.scanning")} />
+          <ScanningState page="uninstaller" label={t("uninstaller.scanning")} />
         )}
 
         {phase === "results" && (

@@ -16,6 +16,7 @@ import { NavigationContext } from "./contexts/navigation-context";
 import { usePolling } from "./hooks/use-polling";
 import { api, isElectron } from "./lib/api";
 import { DISK_REFRESH_EVENT } from "./lib/events";
+import { moduleStyle } from "./lib/modules";
 import type { AppStats, DiskUsage, Page } from "./types";
 
 const PAGE_COMPONENTS: Record<Page, ComponentType> = {
@@ -73,7 +74,16 @@ function AppShell() {
           diskUsage={diskUsage}
           junkBadge={stats?.lastScanJunkSize ?? 0}
         />
-        <main className="main-content">
+        <main
+          className="main-content"
+          data-module={currentPage}
+          style={moduleStyle(currentPage) as React.CSSProperties}
+        >
+          <div className="ambient" aria-hidden="true">
+            <span className="ambient-blob a" />
+            <span className="ambient-blob b" />
+            <span className="ambient-blob c" />
+          </div>
           {!isElectron && <div className="preview-banner">{t("common.previewMode")}</div>}
           {(Object.keys(PAGE_COMPONENTS) as Page[]).map((page) => {
             if (!visited.has(page)) return null;

@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { TrayApp } from "./tray-app";
 import "./i18n";
+import "@fontsource-variable/inter";
 import "./tray-app.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

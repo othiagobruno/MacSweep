@@ -1,18 +1,8 @@
-import {
-  Zap,
-  Trash2,
-  FileSearch,
-  Activity,
-  Package,
-  Wrench,
-  HardDrive,
-  Power,
-  Settings,
-  type LucideIcon,
-} from "lucide-react";
+import { HardDrive } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { DiskUsage, Page } from "../types";
 import { formatBytes } from "../utils";
+import { MODULES, moduleStyle } from "../lib/modules";
 import logoFull from "../../assets/logo.png";
 import logoCompact from "../../assets/logo-icon.png";
 
@@ -24,15 +14,15 @@ interface SidebarProps {
   junkBadge: number;
 }
 
-const navItems: Array<{ id: Page; labelKey: string; icon: LucideIcon; shortcut?: string }> = [
-  { id: "smart-scan", labelKey: "sidebar.smartScan", icon: Zap, shortcut: "⌘1" },
-  { id: "system-junk", labelKey: "sidebar.systemJunk", icon: Trash2, shortcut: "⌘2" },
-  { id: "large-files", labelKey: "sidebar.largeFiles", icon: FileSearch, shortcut: "⌘3" },
-  { id: "performance", labelKey: "sidebar.performance", icon: Activity, shortcut: "⌘4" },
-  { id: "uninstaller", labelKey: "sidebar.uninstaller", icon: Package, shortcut: "⌘5" },
-  { id: "maintenance", labelKey: "sidebar.maintenance", icon: Wrench, shortcut: "⌘6" },
-  { id: "startup-items", labelKey: "sidebar.startupItems", icon: Power, shortcut: "⌘7" },
-  { id: "settings", labelKey: "sidebar.settings", icon: Settings, shortcut: "⌘," },
+const navItems: Array<{ id: Page; labelKey: string; shortcut: string }> = [
+  { id: "smart-scan", labelKey: "sidebar.smartScan", shortcut: "⌘1" },
+  { id: "system-junk", labelKey: "sidebar.systemJunk", shortcut: "⌘2" },
+  { id: "large-files", labelKey: "sidebar.largeFiles", shortcut: "⌘3" },
+  { id: "performance", labelKey: "sidebar.performance", shortcut: "⌘4" },
+  { id: "uninstaller", labelKey: "sidebar.uninstaller", shortcut: "⌘5" },
+  { id: "maintenance", labelKey: "sidebar.maintenance", shortcut: "⌘6" },
+  { id: "startup-items", labelKey: "sidebar.startupItems", shortcut: "⌘7" },
+  { id: "settings", labelKey: "sidebar.settings", shortcut: "⌘," },
 ];
 
 function diskTone(percentUsed: number): string {
@@ -56,7 +46,7 @@ export function Sidebar({ currentPage, onNavigate, diskUsage, junkBadge }: Sideb
       <nav className="sidebar-nav" aria-label={t("sidebar.features")}>
         <div className="sidebar-section-title">{t("sidebar.features")}</div>
         {navItems.map((item) => {
-          const Icon = item.icon;
+          const Icon = MODULES[item.id].icon;
           const label = t(item.labelKey);
           const active = currentPage === item.id;
           return (
@@ -65,11 +55,14 @@ export function Sidebar({ currentPage, onNavigate, diskUsage, junkBadge }: Sideb
               type="button"
               className={`sidebar-item ${active ? "active" : ""}`}
               aria-current={active ? "page" : undefined}
-              title={item.shortcut ? `${label}  ${item.shortcut}` : label}
+              title={`${label}  ${item.shortcut}`}
               onClick={() => onNavigate(item.id)}
             >
-              <span className="sidebar-item-icon">
-                <Icon size={20} />
+              <span
+                className="sidebar-item-icon"
+                style={moduleStyle(item.id) as React.CSSProperties}
+              >
+                <Icon size={15} strokeWidth={2.2} />
               </span>
               <span className="sidebar-item-label">{label}</span>
               {item.id === "smart-scan" && junkBadge > 0 && (

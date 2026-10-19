@@ -7,15 +7,16 @@ import {
   RotateCcw,
   Sparkles,
   Trash2,
-  Zap,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Checkbox } from "../components/checkbox";
 import { ConfirmDialog } from "../components/confirm-dialog";
 import { FullDiskAccessNotice } from "../components/full-disk-access-notice";
 import { JunkIcon } from "../components/junk-meta";
-import { PulseLoader, ScanningLines, ScanningOrb } from "../components/loaders";
-import { PageHeader, ScanHero } from "../components/page";
+import { AnimatedNumber } from "../components/animated-number";
+import { PulseLoader } from "../components/loaders";
+import { ModuleArt } from "../components/module-art";
+import { PageHeader, ScanHero, ScanningState } from "../components/page";
 import { useToast } from "../components/toast";
 import { useNavigation } from "../contexts/navigation-context";
 import { useCleaner } from "../hooks/use-cleaner";
@@ -157,48 +158,51 @@ export function SmartScan() {
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <PageHeader
-          title={t("smartScan.title")}
-          subtitle={t("smartScan.subtitle")}
-        />
-
-        {phase === "idle" && (
-          <ScanHero
-            icon={<Zap size={40} />}
-            label={t("common.scan")}
-            hint={t("smartScan.clickToStart")}
-            onScan={handleScan}
-            footer={heroFooter}
+        {phase === "results" && (
+          <PageHeader
+            title={t("smartScan.title")}
+            subtitle={t("smartScan.subtitle")}
           />
         )}
 
+        {phase === "idle" && (
+          <ScanHero page="smart-scan" onScan={handleScan} footer={heroFooter} />
+        )}
+
         {phase === "scanning" && (
-          <div className="scan-container fade-in">
-            <ScanningOrb progress={progress} />
-            <p className="scan-status">
-              {currentCategory
+          <ScanningState
+            page="smart-scan"
+            progress={progress}
+            label={
+              currentCategory
                 ? t("smartScan.scanningCategory", {
                     category: t(`junk.${currentCategory}`),
                   })
-                : t("smartScan.finishing")}
-            </p>
-            <ScanningLines />
-          </div>
+                : t("smartScan.finishing")
+            }
+          />
         )}
 
         {phase === "cleaned" && (
-          <div className="scan-container fade-in">
-            <div className="success-burst">
-              <CheckCircle2 size={72} />
-            </div>
+          <div className="working-state fade-in">
+            <ModuleArt page="smart-scan" size={220}>
+              <CheckCircle2 size={72} strokeWidth={1.6} />
+            </ModuleArt>
             <h2 className="success-title">
-              {freed > 0
-                ? t("smartScan.freedTitle", { size: formatBytes(freed) })
-                : t("smartScan.yourMacIsClean")}
+              {freed > 0 ? (
+                <AnimatedNumber
+                  value={freed}
+                  format={(n) =>
+                    t("smartScan.freedTitle", { size: formatBytes(n) })
+                  }
+                />
+              ) : (
+                t("smartScan.yourMacIsClean")
+              )}
             </h2>
             <p className="scan-status">{t("smartScan.freedMessage")}</p>
             <button
-              className="btn btn-secondary"
+              className="btn btn-glass"
               style={{ marginTop: 24 }}
               onClick={handleScan}
             >

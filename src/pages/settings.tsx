@@ -47,7 +47,11 @@ const THEMES: Array<{ id: ThemeId; labelKey: string; descKey: string }> = [
   { id: "dark", labelKey: "settings.dark", descKey: "settings.darkDesc" },
   { id: "darker", labelKey: "settings.darker", descKey: "settings.darkerDesc" },
   { id: "light", labelKey: "settings.light", descKey: "settings.lightDesc" },
-  { id: "system", labelKey: "settings.systemTheme", descKey: "settings.systemThemeDesc" },
+  {
+    id: "system",
+    labelKey: "settings.systemTheme",
+    descKey: "settings.systemThemeDesc",
+  },
 ];
 
 function SettingRow({
@@ -99,9 +103,15 @@ function RangeSetting({
         aria-label={label}
         onChange={(e) => onChange(Number(e.target.value))}
         className="settings-range"
-        style={{ "--range-pct": `${((value - min) / (max - min)) * 100}%` } as React.CSSProperties}
+        style={
+          {
+            "--range-pct": `${((value - min) / (max - min)) * 100}%`,
+          } as React.CSSProperties
+        }
       />
-      <span className="settings-range-value">{format ? format(value) : `${value}${suffix ?? ""}`}</span>
+      <span className="settings-range-value">
+        {format ? format(value) : `${value}${suffix ?? ""}`}
+      </span>
     </div>
   );
 }
@@ -123,10 +133,22 @@ export function Settings() {
     void api.app.stats().then(setStats);
   }, [isActive, activeTab]);
 
-  const tabs: Array<{ id: SettingsTab; labelKey: string; icon: React.ReactNode }> = [
+  const tabs: Array<{
+    id: SettingsTab;
+    labelKey: string;
+    icon: React.ReactNode;
+  }> = [
     { id: "general", labelKey: "settings.general", icon: <Globe size={16} /> },
-    { id: "scanning", labelKey: "settings.scanning", icon: <ScanSearch size={16} /> },
-    { id: "appearance", labelKey: "settings.appearance", icon: <Palette size={16} /> },
+    {
+      id: "scanning",
+      labelKey: "settings.scanning",
+      icon: <ScanSearch size={16} />,
+    },
+    {
+      id: "appearance",
+      labelKey: "settings.appearance",
+      icon: <Palette size={16} />,
+    },
     { id: "about", labelKey: "settings.about", icon: <Info size={16} /> },
   ];
 
@@ -150,7 +172,10 @@ export function Settings() {
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <PageHeader title={t("settings.title")} subtitle={t("settings.subtitle")} />
+        <PageHeader
+          title={t("settings.title")}
+          subtitle={t("settings.subtitle")}
+        />
 
         <div className="settings-tabs" role="tablist">
           {tabs.map((tab) => (
@@ -170,9 +195,14 @@ export function Settings() {
         {activeTab === "general" && (
           <div className="settings-section fade-in" role="tabpanel">
             <div className="settings-group">
-              <h3 className="settings-group-title">{t("settings.preferences")}</h3>
+              <h3 className="settings-group-title">
+                {t("settings.preferences")}
+              </h3>
 
-              <SettingRow title={t("settings.language")} description={t("settings.languageDesc")}>
+              <SettingRow
+                title={t("settings.language")}
+                description={t("settings.languageDesc")}
+              >
                 <select
                   className="settings-select"
                   value={settings.language}
@@ -187,7 +217,10 @@ export function Settings() {
                 </select>
               </SettingRow>
 
-              <SettingRow title={t("settings.launchAtLogin")} description={t("settings.launchAtLoginDesc")}>
+              <SettingRow
+                title={t("settings.launchAtLogin")}
+                description={t("settings.launchAtLoginDesc")}
+              >
                 <Switch
                   checked={settings.launchAtLogin}
                   label={t("settings.launchAtLogin")}
@@ -195,7 +228,10 @@ export function Settings() {
                 />
               </SettingRow>
 
-              <SettingRow title={t("settings.showInMenuBar")} description={t("settings.showInMenuBarDesc")}>
+              <SettingRow
+                title={t("settings.showInMenuBar")}
+                description={t("settings.showInMenuBarDesc")}
+              >
                 <Switch
                   checked={settings.showInMenuBar}
                   label={t("settings.showInMenuBar")}
@@ -205,7 +241,9 @@ export function Settings() {
             </div>
 
             <div className="settings-group">
-              <h3 className="settings-group-title">{t("settings.automation")}</h3>
+              <h3 className="settings-group-title">
+                {t("settings.automation")}
+              </h3>
 
               <SettingRow
                 title={t("settings.autoScanInterval")}
@@ -217,7 +255,10 @@ export function Settings() {
                       components={{ strong: <strong /> }}
                     />
                   ) : (
-                    <Trans i18nKey="settings.autoScanOff" components={{ strong: <strong /> }} />
+                    <Trans
+                      i18nKey="settings.autoScanOff"
+                      components={{ strong: <strong /> }}
+                    />
                   )
                 }
               >
@@ -231,7 +272,10 @@ export function Settings() {
                 />
               </SettingRow>
 
-              <SettingRow title={t("settings.notifications")} description={t("settings.notificationsDesc")}>
+              <SettingRow
+                title={t("settings.notifications")}
+                description={t("settings.notificationsDesc")}
+              >
                 <Switch
                   checked={settings.notifications}
                   disabled={settings.autoScanInterval === 0}
@@ -246,7 +290,9 @@ export function Settings() {
         {activeTab === "scanning" && (
           <div className="settings-section fade-in" role="tabpanel">
             <div className="settings-group">
-              <h3 className="settings-group-title">{t("settings.scanConfig")}</h3>
+              <h3 className="settings-group-title">
+                {t("settings.scanConfig")}
+              </h3>
 
               <SettingRow
                 title={t("settings.minFileSize")}
@@ -287,7 +333,10 @@ export function Settings() {
                 />
               </SettingRow>
 
-              <SettingRow title={t("settings.skipSystemFiles")} description={t("settings.skipSystemFilesDesc")}>
+              <SettingRow
+                title={t("settings.skipSystemFiles")}
+                description={t("settings.skipSystemFilesDesc")}
+              >
                 <Switch
                   checked={settings.skipSystemFiles}
                   label={t("settings.skipSystemFiles")}
@@ -295,7 +344,10 @@ export function Settings() {
                 />
               </SettingRow>
 
-              <SettingRow title={t("settings.scanHiddenFiles")} description={t("settings.scanHiddenFilesDesc")}>
+              <SettingRow
+                title={t("settings.scanHiddenFiles")}
+                description={t("settings.scanHiddenFilesDesc")}
+              >
                 <Switch
                   checked={settings.scanHiddenFiles}
                   label={t("settings.scanHiddenFiles")}
@@ -305,12 +357,18 @@ export function Settings() {
             </div>
 
             <div className="settings-group">
-              <h3 className="settings-group-title">{t("settings.excludedFolders")}</h3>
-              <p className="settings-group-desc">{t("settings.excludedFoldersDesc")}</p>
+              <h3 className="settings-group-title">
+                {t("settings.excludedFolders")}
+              </h3>
+              <p className="settings-group-desc">
+                {t("settings.excludedFoldersDesc")}
+              </p>
 
               <div className="settings-excluded-list">
                 {settings.excludedFolders.length === 0 && (
-                  <span className="settings-empty">{t("settings.noExcluded")}</span>
+                  <span className="settings-empty">
+                    {t("settings.noExcluded")}
+                  </span>
                 )}
                 {settings.excludedFolders.map((folder) => (
                   <div key={folder} className="settings-excluded-item">
@@ -338,7 +396,9 @@ export function Settings() {
                   placeholder="~/Projects/build"
                   value={newFolder}
                   onChange={(e) => setNewFolder(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addExcludedFolder(newFolder)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && addExcludedFolder(newFolder)
+                  }
                   className="settings-add-input"
                 />
                 <button
@@ -386,13 +446,17 @@ export function Settings() {
             </div>
 
             <div className="settings-group">
-              <h3 className="settings-group-title">{t("settings.accentColor")}</h3>
+              <h3 className="settings-group-title">
+                {t("settings.accentColor")}
+              </h3>
               <div className="settings-color-picker">
                 {ACCENT_COLORS.map((color) => (
                   <button
                     key={color.value}
                     className={`settings-color-dot ${settings.accentColor === color.value ? "active" : ""}`}
-                    style={{ "--dot-color": color.value } as React.CSSProperties}
+                    style={
+                      { "--dot-color": color.value } as React.CSSProperties
+                    }
                     onClick={() => update("accentColor", color.value)}
                     title={color.name}
                     aria-label={color.name}
@@ -401,7 +465,9 @@ export function Settings() {
                 ))}
                 <label
                   className={`settings-color-custom ${
-                    ACCENT_COLORS.some((c) => c.value === settings.accentColor) ? "" : "active"
+                    ACCENT_COLORS.some((c) => c.value === settings.accentColor)
+                      ? ""
+                      : "active"
                   }`}
                   title={t("settings.customColor")}
                 >
@@ -416,15 +482,23 @@ export function Settings() {
             </div>
 
             <div className="settings-group">
-              <h3 className="settings-group-title">{t("settings.interface")}</h3>
-              <SettingRow title={t("settings.compactSidebar")} description={t("settings.compactSidebarDesc")}>
+              <h3 className="settings-group-title">
+                {t("settings.interface")}
+              </h3>
+              <SettingRow
+                title={t("settings.compactSidebar")}
+                description={t("settings.compactSidebarDesc")}
+              >
                 <Switch
                   checked={settings.compactSidebar}
                   label={t("settings.compactSidebar")}
                   onChange={(v) => update("compactSidebar", v)}
                 />
               </SettingRow>
-              <SettingRow title={t("settings.animations")} description={t("settings.animationsDesc")}>
+              <SettingRow
+                title={t("settings.animations")}
+                description={t("settings.animationsDesc")}
+              >
                 <Switch
                   checked={settings.animationsEnabled}
                   label={t("settings.animations")}
@@ -448,10 +522,18 @@ export function Settings() {
             </div>
 
             <div className="settings-group">
-              <h3 className="settings-group-title">{t("settings.application")}</h3>
+              <h3 className="settings-group-title">
+                {t("settings.application")}
+              </h3>
 
-              <SettingRow title={t("settings.checkForUpdates")} description={t("settings.checkForUpdatesDesc")}>
-                <button className="btn btn-ghost" onClick={() => void api.app.openReleases()}>
+              <SettingRow
+                title={t("settings.checkForUpdates")}
+                description={t("settings.checkForUpdatesDesc")}
+              >
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => void api.app.openReleases()}
+                >
                   <ExternalLink size={14} />
                   {t("settings.checkNow")}
                 </button>
@@ -464,35 +546,52 @@ export function Settings() {
                   count: stats?.cleanCount ?? 0,
                 })}
               >
-                <span className="settings-value">{formatBytes(stats?.totalFreed ?? 0)}</span>
+                <span className="settings-value">
+                  {formatBytes(stats?.totalFreed ?? 0)}
+                </span>
               </SettingRow>
 
-              <SettingRow title={t("settings.storageUsed")} description={t("settings.storageUsedDesc")}>
-                <span className="settings-value">{meta ? formatBytes(meta.dataSize) : "…"}</span>
+              <SettingRow
+                title={t("settings.storageUsed")}
+                description={t("settings.storageUsedDesc")}
+              >
+                <span className="settings-value">
+                  {meta ? formatBytes(meta.dataSize) : "…"}
+                </span>
               </SettingRow>
 
               <SettingRow
                 title={t("settings.runtime")}
                 description={
-                  meta ? `Electron ${meta.electron} · Chromium ${meta.chrome} · Node ${meta.node}` : "…"
+                  meta
+                    ? `Electron ${meta.electron} · Chromium ${meta.chrome} · Node ${meta.node}`
+                    : "…"
                 }
               >
                 <span />
               </SettingRow>
 
-              <SettingRow title={t("settings.license")} description={t("settings.licenseDesc")}>
+              <SettingRow
+                title={t("settings.license")}
+                description={t("settings.licenseDesc")}
+              >
                 <span className="settings-badge">MIT</span>
               </SettingRow>
             </div>
 
             <div className="settings-group">
-              <h3 className="settings-group-title">{t("settings.dangerZone")}</h3>
+              <h3 className="settings-group-title">
+                {t("settings.dangerZone")}
+              </h3>
               <SettingRow
                 danger
                 title={t("settings.resetToDefaults")}
                 description={t("settings.resetToDefaultsDesc")}
               >
-                <button className="btn btn-danger" onClick={() => setConfirmReset(true)}>
+                <button
+                  className="btn btn-danger"
+                  onClick={() => setConfirmReset(true)}
+                >
                   <RotateCcw size={14} />
                   {t("common.reset")}
                 </button>

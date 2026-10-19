@@ -115,34 +115,31 @@ export function SystemJunk() {
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <PageHeader
-          title={t("systemJunk.title")}
-          subtitle={t("systemJunk.subtitle")}
-          actions={
-            phase === "results" && (
-              <button
-                className="btn btn-sm btn-secondary"
-                onClick={() => scan()}
-                disabled={isCleaning}
-              >
-                <RotateCcw size={14} />
-                {t("common.rescan")}
-              </button>
-            )
-          }
-        />
-
-        {phase === "idle" && (
-          <ScanHero
-            icon={<Search size={36} />}
-            label={t("common.scan")}
-            hint={t("systemJunk.scanStatus")}
-            onScan={() => scan()}
+        {phase !== "idle" && (
+          <PageHeader
+            title={t("systemJunk.title")}
+            subtitle={t("systemJunk.subtitle")}
+            actions={
+              phase === "results" && (
+                <button
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => scan()}
+                  disabled={isCleaning}
+                >
+                  <RotateCcw size={14} />
+                  {t("common.rescan")}
+                </button>
+              )
+            }
           />
         )}
 
+        {phase === "idle" && (
+          <ScanHero page="system-junk" onScan={() => scan()} />
+        )}
+
         {phase === "scanning" && (
-          <ScanningState label={t("systemJunk.scanning")} />
+          <ScanningState page="system-junk" label={t("systemJunk.scanning")} />
         )}
 
         {phase === "results" && (

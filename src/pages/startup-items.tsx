@@ -118,30 +118,28 @@ export function StartupItems() {
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <PageHeader
-          title={t("startupItems.title")}
-          subtitle={t("startupItems.subtitle")}
-          actions={
-            phase === "results" && (
-              <button className="btn btn-sm btn-secondary" onClick={scan}>
-                <RotateCcw size={14} />
-                {t("common.rescan")}
-              </button>
-            )
-          }
-        />
-
-        {phase === "idle" && (
-          <ScanHero
-            icon={<Power size={36} />}
-            label={t("common.scan")}
-            hint={t("startupItems.scanStatus")}
-            onScan={scan}
+        {phase !== "idle" && (
+          <PageHeader
+            title={t("startupItems.title")}
+            subtitle={t("startupItems.subtitle")}
+            actions={
+              phase === "results" && (
+                <button className="btn btn-sm btn-secondary" onClick={scan}>
+                  <RotateCcw size={14} />
+                  {t("common.rescan")}
+                </button>
+              )
+            }
           />
         )}
 
+        {phase === "idle" && <ScanHero page="startup-items" onScan={scan} />}
+
         {phase === "scanning" && (
-          <ScanningState label={t("startupItems.scanning")} />
+          <ScanningState
+            page="startup-items"
+            label={t("startupItems.scanning")}
+          />
         )}
 
         {phase === "results" && (

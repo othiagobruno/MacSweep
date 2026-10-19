@@ -38,6 +38,7 @@ export function accentVars(hex: string, light: boolean): Record<string, string> 
   const secondary = light ? mix(hex, 0, 0.2) : mix(hex, 255, 0.35);
   return {
     "--accent-primary": hex,
+    "--user-accent": hex,
     "--accent-secondary": secondary,
     "--accent-gradient": `linear-gradient(135deg, ${hex} 0%, ${mix(hex, 255, 0.35)} 100%)`,
   };

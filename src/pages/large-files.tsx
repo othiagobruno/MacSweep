@@ -14,19 +14,39 @@ import {
 import { useTranslation } from "react-i18next";
 import { Checkbox } from "../components/checkbox";
 import { ConfirmDialog } from "../components/confirm-dialog";
-import { ActionBar, EmptyState, PageHeader, ScanHero, ScanningState } from "../components/page";
+import {
+  ActionBar,
+  EmptyState,
+  PageHeader,
+  ScanHero,
+  ScanningState,
+} from "../components/page";
 import { useToast } from "../components/toast";
 import { useNavigation } from "../contexts/navigation-context";
 import { useSettings } from "../contexts/settings-context";
 import { api } from "../lib/api";
 import { requestDiskRefresh } from "../lib/events";
-import { formatBytes, formatDate, KIND_COLORS, shortenPath, sumBy } from "../utils";
+import {
+  formatBytes,
+  formatDate,
+  KIND_COLORS,
+  shortenPath,
+  sumBy,
+} from "../utils";
 import type { FileKind, LargeFile } from "../types";
 
 type SortKey = "size" | "name" | "lastModified" | "lastAccessed";
 type Phase = "idle" | "scanning" | "results";
 
-const KINDS: FileKind[] = ["video", "archive", "diskImage", "audio", "image", "document", "other"];
+const KINDS: FileKind[] = [
+  "video",
+  "archive",
+  "diskImage",
+  "audio",
+  "image",
+  "document",
+  "other",
+];
 
 export function LargeFiles() {
   const { t, i18n } = useTranslation();
@@ -39,7 +59,10 @@ export function LargeFiles() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [kind, setKind] = useState<FileKind | "all">("all");
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "size", desc: true });
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({
+    key: "size",
+    desc: true,
+  });
   const [showConfirm, setShowConfirm] = useState(false);
   const [isTrashing, setIsTrashing] = useState(false);
 
@@ -70,7 +93,9 @@ export function LargeFiles() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = files.filter(
-      (f) => (kind === "all" || f.kind === kind) && (!q || f.path.toLowerCase().includes(q)),
+      (f) =>
+        (kind === "all" || f.kind === kind) &&
+        (!q || f.path.toLowerCase().includes(q)),
     );
     const dir = sort.desc ? -1 : 1;
     return filtered.sort((a, b) => {
@@ -80,7 +105,11 @@ export function LargeFiles() {
         case "size":
           return (a.size - b.size) * dir;
         default:
-          return (new Date(a[sort.key]).getTime() - new Date(b[sort.key]).getTime()) * dir;
+          return (
+            (new Date(a[sort.key]).getTime() -
+              new Date(b[sort.key]).getTime()) *
+            dir
+          );
       }
     });
   }, [files, kind, query, sort]);
@@ -101,7 +130,8 @@ export function LargeFiles() {
   function toggleVisible() {
     setSelected((prev) => {
       const next = new Set(prev);
-      const allVisible = visible.length > 0 && visible.every((f) => next.has(f.path));
+      const allVisible =
+        visible.length > 0 && visible.every((f) => next.has(f.path));
       for (const f of visible) {
         if (allVisible) next.delete(f.path);
         else next.add(f.path);
@@ -111,14 +141,19 @@ export function LargeFiles() {
   }
 
   function sortBy(key: SortKey) {
-    setSort((prev) => ({ key, desc: prev.key === key ? !prev.desc : key !== "name" }));
+    setSort((prev) => ({
+      key,
+      desc: prev.key === key ? !prev.desc : key !== "name",
+    }));
   }
 
   async function handleTrash() {
     setShowConfirm(false);
     setIsTrashing(true);
     try {
-      const { moved, failed } = await api.shell.moveToTrash(Array.from(selected));
+      const { moved, failed } = await api.shell.moveToTrash(
+        Array.from(selected),
+      );
       const movedSet = new Set(moved);
       setFiles((prev) => prev.filter((f) => !movedSet.has(f.path)));
       setSelected(new Set(failed));
@@ -141,10 +176,18 @@ export function LargeFiles() {
   }
 
   const SortHeader = ({ k, label }: { k: SortKey; label: string }) => (
-    <th aria-sort={sort.key === k ? (sort.desc ? "descending" : "ascending") : "none"}>
-      <button className={`th-sort ${sort.key === k ? "active" : ""}`} onClick={() => sortBy(k)}>
+    <th
+      aria-sort={
+        sort.key === k ? (sort.desc ? "descending" : "ascending") : "none"
+      }
+    >
+      <button
+        className={`th-sort ${sort.key === k ? "active" : ""}`}
+        onClick={() => sortBy(k)}
+      >
         {label}
-        {sort.key === k && (sort.desc ? <ArrowDown size={12} /> : <ArrowUp size={12} />)}
+        {sort.key === k &&
+          (sort.desc ? <ArrowDown size={12} /> : <ArrowUp size={12} />)}
       </button>
     </th>
   );
@@ -152,27 +195,35 @@ export function LargeFiles() {
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <PageHeader
-          title={t("largeFiles.title")}
-          subtitle={t("largeFiles.subtitle")}
-          actions={
-            phase === "results" && (
-              <button className="btn btn-sm btn-secondary" onClick={scan}>
-                <RotateCcw size={14} />
-                {t("common.rescan")}
-              </button>
-            )
-          }
-        />
+        {phase !== "idle" && (
+          <PageHeader
+            title={t("largeFiles.title")}
+            subtitle={t("largeFiles.subtitle")}
+            actions={
+              phase === "results" && (
+                <button className="btn btn-sm btn-secondary" onClick={scan}>
+                  <RotateCcw size={14} />
+                  {t("common.rescan")}
+                </button>
+              )
+            }
+          />
+        )}
 
         {phase === "idle" && (
           <ScanHero
-            icon={<FileSearch size={36} />}
-            label={t("common.scan")}
-            hint={t("largeFiles.scanStatus", { size: settings.minFileSize, depth: settings.scanDepth })}
+            page="large-files"
+            hint={t("largeFiles.scanStatus", {
+              size: settings.minFileSize,
+              depth: settings.scanDepth,
+            })}
             onScan={scan}
             footer={
-              <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => navigate("settings")}>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ marginTop: 12 }}
+                onClick={() => navigate("settings")}
+              >
                 <SlidersHorizontal size={14} />
                 {t("largeFiles.adjustSettings")}
               </button>
@@ -180,7 +231,9 @@ export function LargeFiles() {
           />
         )}
 
-        {phase === "scanning" && <ScanningState label={t("largeFiles.scanning")} />}
+        {phase === "scanning" && (
+          <ScanningState page="large-files" label={t("largeFiles.scanning")} />
+        )}
 
         {phase === "results" && files.length === 0 && (
           <EmptyState
@@ -209,7 +262,8 @@ export function LargeFiles() {
                   className={`chip ${kind === "all" ? "active" : ""}`}
                   onClick={() => setKind("all")}
                 >
-                  {t("common.all")} <span className="chip-count">{files.length}</span>
+                  {t("common.all")}{" "}
+                  <span className="chip-count">{files.length}</span>
                 </button>
                 {KINDS.filter((k) => kindCounts.has(k)).map((k) => (
                   <button
@@ -219,15 +273,22 @@ export function LargeFiles() {
                     className={`chip ${kind === k ? "active" : ""}`}
                     onClick={() => setKind(k)}
                   >
-                    <span className="chip-dot" style={{ background: KIND_COLORS[k] }} />
-                    {t(`largeFiles.kinds.${k}`)} <span className="chip-count">{kindCounts.get(k)}</span>
+                    <span
+                      className="chip-dot"
+                      style={{ background: KIND_COLORS[k] }}
+                    />
+                    {t(`largeFiles.kinds.${k}`)}{" "}
+                    <span className="chip-count">{kindCounts.get(k)}</span>
                   </button>
                 ))}
               </div>
             </div>
 
             {visible.length === 0 ? (
-              <EmptyState icon={<Search size={40} />} title={t("largeFiles.noMatches")} />
+              <EmptyState
+                icon={<Search size={40} />}
+                title={t("largeFiles.noMatches")}
+              />
             ) : (
               <table className="file-list">
                 <thead>
@@ -235,14 +296,20 @@ export function LargeFiles() {
                     <th style={{ width: 40 }}>
                       <Checkbox
                         checked={visibleSelected === visible.length}
-                        indeterminate={visibleSelected > 0 && visibleSelected < visible.length}
+                        indeterminate={
+                          visibleSelected > 0 &&
+                          visibleSelected < visible.length
+                        }
                         onChange={toggleVisible}
                         label={t("common.selectAll")}
                       />
                     </th>
                     <SortHeader k="name" label={t("common.name")} />
                     <SortHeader k="size" label={t("common.size")} />
-                    <SortHeader k="lastAccessed" label={t("common.lastOpened")} />
+                    <SortHeader
+                      k="lastAccessed"
+                      label={t("common.lastOpened")}
+                    />
                     <th style={{ width: 72 }} />
                   </tr>
                 </thead>
@@ -263,19 +330,32 @@ export function LargeFiles() {
                       </td>
                       <td>
                         <div className="file-name">
-                          <File size={16} style={{ color: KIND_COLORS[file.kind], flexShrink: 0 }} />
+                          <File
+                            size={16}
+                            style={{
+                              color: KIND_COLORS[file.kind],
+                              flexShrink: 0,
+                            }}
+                          />
                           <div className="file-name-text">
                             <span className="file-name-title" title={file.name}>
                               {file.name}
                             </span>
                             <span className="file-name-path" title={file.path}>
-                              {shortenPath(file.path.slice(0, file.path.length - file.name.length - 1))}
+                              {shortenPath(
+                                file.path.slice(
+                                  0,
+                                  file.path.length - file.name.length - 1,
+                                ),
+                              )}
                             </span>
                           </div>
                         </div>
                       </td>
                       <td className="cell-size">{formatBytes(file.size)}</td>
-                      <td className="cell-muted">{formatDate(file.lastAccessed, i18n.language)}</td>
+                      <td className="cell-muted">
+                        {formatDate(file.lastAccessed, i18n.language)}
+                      </td>
                       <td>
                         <div className="row-actions">
                           <button
@@ -317,7 +397,10 @@ export function LargeFiles() {
             <span className="toolbar-info">
               {selected.size > 0
                 ? `${t("largeFiles.selectedInfo", { count: selected.size })} · ${formatBytes(selectedSize)}`
-                : t("largeFiles.summary", { count: files.length, size: formatBytes(sumBy(files, (f) => f.size)) })}
+                : t("largeFiles.summary", {
+                    count: files.length,
+                    size: formatBytes(sumBy(files, (f) => f.size)),
+                  })}
             </span>
           </div>
           <div className="toolbar-right">
@@ -336,7 +419,10 @@ export function LargeFiles() {
       <ConfirmDialog
         isOpen={showConfirm}
         title={t("largeFiles.confirmTitle")}
-        message={t("largeFiles.confirmMessage", { count: selected.size, size: formatBytes(selectedSize) })}
+        message={t("largeFiles.confirmMessage", {
+          count: selected.size,
+          size: formatBytes(selectedSize),
+        })}
         confirmLabel={t("largeFiles.moveToTrash")}
         variant="danger"
         onConfirm={handleTrash}
