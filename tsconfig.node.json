@@ -14,5 +14,5 @@
     "isolatedModules": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "electron", "shared"]
+  "include": ["vite.config.ts", "vitest.config.mts", "electron", "shared", "tests"]
 }

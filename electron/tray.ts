@@ -82,7 +82,11 @@ function createTrayWindow(): BrowserWindow {
     maximizable: false,
     fullscreenable: false,
     skipTaskbar: true,
-    transparent: true,
+    // Native popover material, like Control Center and other menu bar extras.
+    vibrancy: "popover",
+    visualEffectState: "active",
+    backgroundColor: "#00000000",
+    roundedCorners: true,
     hasShadow: true,
     alwaysOnTop: true,
     webPreferences: {
@@ -111,7 +115,7 @@ function showTrayWindow(trayBounds: Electron.Rectangle) {
 
   const display = screen.getDisplayNearestPoint({ x: trayBounds.x, y: trayBounds.y });
   const x = Math.round(trayBounds.x + trayBounds.width / 2 - TRAY_WINDOW_WIDTH / 2);
-  const y = Math.round(trayBounds.y + trayBounds.height + 4);
+  const y = Math.round(trayBounds.y + trayBounds.height + 6);
   const maxX = display.workArea.x + display.workArea.width - TRAY_WINDOW_WIDTH;
   const clampedX = Math.min(Math.max(x, display.workArea.x), maxX);
 
@@ -135,7 +139,7 @@ function registerTrayIpc(options: TrayOptions) {
     if (!trayWindow || typeof height !== "number" || !Number.isFinite(height)) return;
     const display = screen.getDisplayMatching(trayWindow.getBounds());
     const max = display.workArea.height - 16;
-    const next = Math.min(max, Math.max(200, Math.ceil(height)));
+    const next = Math.min(max, Math.max(120, Math.ceil(height)));
     trayWindow.setSize(TRAY_WINDOW_WIDTH, next);
   });
 }

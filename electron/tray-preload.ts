@@ -17,6 +17,9 @@ const trayAPI: TrayAPI = {
   settings: {
     load: () => ipcRenderer.invoke("settings:load"),
   },
+  app: {
+    stats: () => ipcRenderer.invoke("app:stats"),
+  },
   tray: {
     openMainWindow: (page) => ipcRenderer.invoke("tray:openMainWindow", page),
     resize: (height) => ipcRenderer.invoke("tray:resize", height),

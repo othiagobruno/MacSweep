@@ -1,0 +1,8 @@
+  |   "ExternalConnected" = Yes
+  |   "MaxCapacity" = 100
+  |   "CurrentCapacity" = 80
+  |   "CycleCount" = 5
+  |   "ChargerData" = {"NotChargingReason"=16777216,"SlowChargingReason"=0,"PMUConfigured"=3360,"PMUConfiguration"=3390,"TimeChargingThermallyLimited"=0,"IsCharging"=0}
+  |   "BatteryData" = {"FullChargeCapacity"=6229,"NominalChargeCapacity"=6381,"FullyCharged"=0,"AvgTimeToEmpty"=22482,"RemainingCapacity"=4871,"AbsoluteCapacity"=0,"MaxCapacity"=100,"DesignCapacity"=6249,"CurrentCapacity"=80,"BatteryPower"=0,"TrueRemainingCapacity"=0}
+  |   "FullyCharged" = No
+  |   "IsCharging" = No

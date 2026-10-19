@@ -90,6 +90,7 @@ export interface TrayAPI {
   system: ElectronAPI["system"];
   maintenance: ElectronAPI["maintenance"];
   settings: Pick<ElectronAPI["settings"], "load">;
+  app: Pick<ElectronAPI["app"], "stats">;
   tray: {
     openMainWindow: (page?: Page) => Promise<void>;
     resize: (height: number) => Promise<void>;

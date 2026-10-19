@@ -378,7 +378,10 @@
     "fair": "普通",
     "good": "良好",
     "userPercent": "{{value}}% ユーザー",
-    "freeSpace": "{{space}} 空き"
+    "freeSpace": "{{space}} 空き",
+    "junkFound": "のジャンクを削除可能",
+    "cleanUp": "クリーン",
+    "disk": "ディスク"
   },
   "hero": {
     "smart-scan": {

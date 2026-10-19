@@ -148,52 +148,62 @@ export async function getDiskUsage(): Promise<DiskUsage> {
 
 /* ── Battery ───────────────────────────────────────── */
 
-export async function getBatteryInfo(): Promise<BatteryInfo | null> {
-  const stdout = await tryRun("ioreg", ["-rc", "AppleSmartBattery"]);
-  if (!stdout || !stdout.includes("CycleCount")) return null;
+/**
+ * Parse `ioreg -rc AppleSmartBattery`. Apple Silicon and Intel Macs differ:
+ * on Apple Silicon the top-level MaxCapacity/CurrentCapacity are percentages
+ * (100/80) while capacities in mAh live in the nested BatteryData dictionary,
+ * so health must come from NominalChargeCapacity / DesignCapacity — the same
+ * figure System Settings shows as "Maximum Capacity".
+ */
+export function parseBattery(stdout: string): BatteryInfo | null {
+  if (!stdout.includes("CycleCount")) return null;
 
-  const extract = (key: string): string | null => {
-    const match = stdout.match(new RegExp(`"${key}"\\s*=\\s*(.+)`));
-    return match ? match[1].trim() : null;
-  };
-  const num = (...keys: string[]) => {
+  // First numeric occurrence of a key, top-level or nested ("Key" = 1 / "Key"=1).
+  const num = (...keys: string[]): number => {
     for (const key of keys) {
-      const value = parseInt(extract(key) ?? "", 10);
-      if (Number.isFinite(value)) return value;
+      const match = stdout.match(new RegExp(`"${key}"\\s*=\\s*(-?\\d+)`));
+      if (match) return parseInt(match[1], 10);
     }
     return 0;
   };
+  const flag = (key: string): boolean =>
+    new RegExp(`"${key}"\\s*=\\s*Yes`).test(stdout);
 
   const cycleCount = num("CycleCount");
-  const maxCapacity = num("AppleRawMaxCapacity", "MaxCapacity");
   const designCapacity = num("DesignCapacity");
-  const currentCapacity = num("AppleRawCurrentCapacity", "CurrentCapacity");
-  // "CurrentCapacity" is already a percentage on Apple Silicon.
-  const reportedPct = num("CurrentCapacity");
+  const maxCapacity = num("MaxCapacity");
+  const currentCapacity = num("CurrentCapacity");
+  const fullCapacity =
+    num("NominalChargeCapacity", "AppleRawMaxCapacity") ||
+    (maxCapacity > 100 ? maxCapacity : 0);
+
   const percentCharge =
-    reportedPct > 0 && reportedPct <= 100
-      ? reportedPct
-      : maxCapacity > 0
-        ? Math.round((currentCapacity / maxCapacity) * 100)
-        : 0;
+    maxCapacity > 0
+      ? Math.min(100, Math.round((currentCapacity / maxCapacity) * 100))
+      : 0;
   const healthPercent =
-    designCapacity > 0
-      ? Math.min(100, Math.round((maxCapacity / designCapacity) * 100))
+    designCapacity > 0 && fullCapacity > 0
+      ? Math.min(100, Math.round((fullCapacity / designCapacity) * 100))
       : 100;
 
   return {
     cycleCount,
-    maxCapacity,
+    maxCapacity: fullCapacity,
     designCapacity,
     currentCapacity,
     percentCharge,
-    isCharging: extract("IsCharging") === "Yes",
-    isFullyCharged: extract("FullyCharged") === "Yes",
+    isCharging: flag("IsCharging"),
+    isFullyCharged: flag("FullyCharged"),
     condition:
       healthPercent < 60 ? "replaceSoon" : healthPercent < 80 ? "fair" : "normal",
     temperature: num("Temperature") / 100,
     healthPercent,
   };
+}
+
+export async function getBatteryInfo(): Promise<BatteryInfo | null> {
+  const stdout = await tryRun("ioreg", ["-rc", "AppleSmartBattery"]);
+  return stdout ? parseBattery(stdout) : null;
 }
 
 /* ── Processes ─────────────────────────────────────── */

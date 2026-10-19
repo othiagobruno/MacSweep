@@ -378,7 +378,10 @@
     "fair": "Fair",
     "good": "Good",
     "userPercent": "{{value}}% user",
-    "freeSpace": "{{space}} free"
+    "freeSpace": "{{space}} free",
+    "junkFound": "junk ready to clean",
+    "cleanUp": "Clean Up",
+    "disk": "Disk"
   },
   "hero": {
     "smart-scan": {
