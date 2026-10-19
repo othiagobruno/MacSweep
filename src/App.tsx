@@ -62,7 +62,7 @@ function AppShell() {
   // window is in the background or after a short idle period: any continuous
   // animation makes Chromium recomposite the whole window at display refresh.
   useEffect(() => {
-    const IDLE_AFTER_MS = 12_000;
+    const IDLE_AFTER_MS = 4_000;
     const root = document.documentElement;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const setIdle = (idle: boolean) => root.classList.toggle("is-idle", idle);
