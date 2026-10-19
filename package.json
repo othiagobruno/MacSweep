@@ -20,7 +20,7 @@
     "check": "npm run typecheck && npm run lint && npm run test",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview --mode web",
-    "dist": "rm -rf dist dist-electron release && npm run build && electron-builder --mac"
+    "dist": "rm -rf dist dist-electron release && npm run build && electron-builder --mac --publish never"
   },
   "dependencies": {},
   "devDependencies": {
@@ -87,6 +87,11 @@
     },
     "directories": {
       "output": "release"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "othiagobruno",
+      "repo": "cleanmymac"
     }
   },
   "engines": {

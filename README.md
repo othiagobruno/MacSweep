@@ -40,6 +40,19 @@ npm run dev:web    # UI only, in the browser, with realistic mock data
 | `npm run build` | Type-check and build renderer + main into `dist/` and `dist-electron/` |
 | `npm run dist` | Build a signed-ready `.dmg` (arm64 + x64) with electron-builder |
 
+The `Makefile` wraps these (`make help` lists everything):
+
+| Target | |
+| --- | --- |
+| `make release` | `check` + clean build of the release `.dmg` files into `release/` |
+| `make publish` | Bump the version (`BUMP=patch\|minor\|major`, default `patch`), tag `vX.Y.Z` and push |
+
+## CI & releases
+
+- **CI** (`.github/workflows/ci.yml`) — runs `npm run check` and `npm run build` on every push to `main` and on pull requests.
+- **Release** (`.github/workflows/release.yml`) — on a `v*` tag, checks the tag matches `package.json`, builds both `.dmg` files and publishes them (plus blockmaps and `latest-mac.yml`) as a GitHub release with generated notes. Run `make publish` to trigger it.
+- **Code signing** is optional: add the `CSC_LINK` (base64 `.p12`) and `CSC_KEY_PASSWORD` repository secrets to sign CI builds. Without them the build is unsigned.
+
 ## Architecture
 
 ```
