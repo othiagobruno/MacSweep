@@ -1,27 +1,32 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
+import type { TrayAPI } from "../shared/api";
 
-const trayAPI = {
+const trayAPI: TrayAPI = {
   system: {
     cpuUsage: () => ipcRenderer.invoke("system:cpuUsage"),
     memoryUsage: () => ipcRenderer.invoke("system:memoryUsage"),
     diskUsage: () => ipcRenderer.invoke("system:diskUsage"),
-    topProcesses: () => ipcRenderer.invoke("system:topProcesses"),
-    killProcess: (pid: number) => ipcRenderer.invoke("system:killProcess", pid),
     batteryInfo: () => ipcRenderer.invoke("system:batteryInfo"),
+    topProcesses: (limit) => ipcRenderer.invoke("system:topProcesses", limit),
+    killProcess: (pid) => ipcRenderer.invoke("system:killProcess", pid),
+    info: () => ipcRenderer.invoke("system:info"),
   },
   maintenance: {
-    freeRam: () => ipcRenderer.invoke("maintenance:freeRam"),
-    flushDns: () => ipcRenderer.invoke("maintenance:flushDns"),
-    rebuildSpotlight: () => ipcRenderer.invoke("maintenance:rebuildSpotlight"),
-    repairPermissions: () =>
-      ipcRenderer.invoke("maintenance:repairPermissions"),
+    run: (taskIds) => ipcRenderer.invoke("maintenance:run", taskIds),
+  },
+  settings: {
+    load: () => ipcRenderer.invoke("settings:load"),
   },
   tray: {
-    openMainWindow: () => ipcRenderer.invoke("tray:openMainWindow"),
+    openMainWindow: (page) => ipcRenderer.invoke("tray:openMainWindow", page),
+    resize: (height) => ipcRenderer.invoke("tray:resize", height),
     quit: () => ipcRenderer.invoke("tray:quit"),
+    onShow: (callback) => {
+      const listener = (_event: IpcRendererEvent) => callback();
+      ipcRenderer.on("tray:show", listener);
+      return () => ipcRenderer.removeListener("tray:show", listener);
+    },
   },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", trayAPI);
-
-export type TrayAPI = typeof trayAPI;

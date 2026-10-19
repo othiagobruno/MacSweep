@@ -1,368 +1,257 @@
-import { useState } from "react";
-import { Power, Search, Check, Shield, User } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  FolderSearch,
+  Power,
+  RotateCcw,
+  Search,
+  Shield,
+  User,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { PulseLoader, ScanningLines } from "../components/loaders";
-import { useAppState } from "../contexts/app-state-context";
+import { Switch } from "../components/checkbox";
+import {
+  EmptyState,
+  PageHeader,
+  ScanHero,
+  ScanningState,
+} from "../components/page";
+import { useToast } from "../components/toast";
+import { api } from "../lib/api";
 import type { StartupItem } from "../types";
 
-interface StartupItemWithIcon extends StartupItem {
-  iconDataUrl?: string | null;
-}
+type Phase = "idle" | "scanning" | "results";
+type Filter = "all" | "enabled" | "disabled";
 
-/**
- * Truncate a long path keeping the start and end visible.
- */
+/** Truncate a long path keeping the start and end visible. */
 function truncatePath(p: string, maxLen = 60): string {
   if (!p || p.length <= maxLen) return p;
-  const start = p.slice(0, 25);
-  const end = p.slice(-30);
-  return `${start}…${end}`;
+  return `${p.slice(0, 25)}…${p.slice(-30)}`;
 }
 
 export function StartupItems() {
   const { t } = useTranslation();
-  const {
-    startupItems: {
-      isScanning,
-      setIsScanning,
-      items,
-      setItems,
-      search,
-      setSearch,
-      scanned,
-      setScanned,
-    },
-  } = useAppState();
+  const toast = useToast();
 
-  const [togglingPaths, setTogglingPaths] = useState<Set<string>>(new Set());
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [items, setItems] = useState<StartupItem[]>([]);
+  const [icons, setIcons] = useState<Record<string, string | null>>({});
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [toggling, setToggling] = useState<Set<string>>(new Set());
 
-  async function handleScan() {
-    setIsScanning(true);
-
+  async function scan() {
+    setPhase("scanning");
     try {
-      let results: StartupItem[];
-      if (window.electronAPI) {
-        results = await window.electronAPI.scan.startupItems();
-      } else {
-        await new Promise((r) => setTimeout(r, 2000));
-        results = getMockItems();
-      }
-      setItems(results.map((i) => ({ ...i, iconDataUrl: null })));
-      setScanned(true);
-
-      // Load icons in background for items with appPath
-      if (window.electronAPI?.app?.getIcon) {
-        for (const item of results) {
-          if (!item.appPath) continue;
-          try {
-            const icon = await window.electronAPI.app.getIcon(item.appPath);
-            setItems((prev: StartupItemWithIcon[]) =>
-              prev.map((i: StartupItemWithIcon) =>
-                i.path === item.path ? { ...i, iconDataUrl: icon } : i,
-              ),
-            );
-          } catch {
-            // skip
-          }
-        }
-      }
+      setItems(await api.scan.startupItems());
     } catch {
-      setItems(getMockItems());
-      setScanned(true);
+      toast.show({ tone: "error", title: t("errors.scanFailed") });
     }
-
-    setIsScanning(false);
+    setPhase("results");
   }
 
-  async function toggleEnabled(item: StartupItemWithIcon) {
-    if (togglingPaths.has(item.path)) return;
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const item of items) {
+        if (cancelled) return;
+        if (!item.appPath || item.appPath in icons) continue;
+        const icon = await api.apps.getIcon(item.appPath).catch(() => null);
+        if (!cancelled)
+          setIcons((prev) => ({ ...prev, [item.appPath!]: icon }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
 
-    setTogglingPaths((prev) => new Set(prev).add(item.path));
-
+  async function setEnabled(item: StartupItem, enabled: boolean) {
+    setToggling((prev) => new Set(prev).add(item.path));
     try {
-      if (window.electronAPI) {
-        const result = item.isEnabled
-          ? await window.electronAPI.startup.disableItem(item.path)
-          : await window.electronAPI.startup.enableItem(item.path);
-
-        if (result.success) {
-          setItems((prev: StartupItemWithIcon[]) =>
-            prev.map((i: StartupItemWithIcon) =>
-              i.path === item.path ? { ...i, isEnabled: !i.isEnabled } : i,
-            ),
-          );
-        }
-      } else {
-        // Mock mode
-        setItems((prev: StartupItemWithIcon[]) =>
-          prev.map((i: StartupItemWithIcon) =>
-            i.path === item.path ? { ...i, isEnabled: !i.isEnabled } : i,
+      const result = await api.startup.setEnabled(item, enabled);
+      if (result.success) {
+        setItems((prev) =>
+          prev.map((i) =>
+            i.path === item.path ? { ...i, isEnabled: enabled } : i,
           ),
         );
+        toast.show({
+          tone: "success",
+          title: t(enabled ? "startupItems.enabled" : "startupItems.disabled", {
+            name: item.name,
+          }),
+          duration: 2500,
+        });
+      } else if (result.cancelled) {
+        toast.show({ tone: "info", title: t("errors.adminCancelled") });
+      } else {
+        toast.show({
+          tone: "error",
+          title: t("startupItems.toggleFailed", { name: item.name }),
+          message: result.error,
+        });
       }
-    } catch {
-      // failed
+    } finally {
+      setToggling((prev) => {
+        const next = new Set(prev);
+        next.delete(item.path);
+        return next;
+      });
     }
-
-    setTogglingPaths((prev) => {
-      const next = new Set(prev);
-      next.delete(item.path);
-      return next;
-    });
   }
 
-  const filteredItems = (items as StartupItemWithIcon[]).filter(
-    (item) =>
-      item.name.toLowerCase().includes(search.toLowerCase()) ||
-      item.programPath.toLowerCase().includes(search.toLowerCase()),
-  );
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return items.filter(
+      (item) =>
+        (filter === "all" || (filter === "enabled") === item.isEnabled) &&
+        (!q ||
+          item.name.toLowerCase().includes(q) ||
+          item.label.toLowerCase().includes(q) ||
+          item.programPath.toLowerCase().includes(q)),
+    );
+  }, [items, search, filter]);
 
-  const enabledCount = filteredItems.filter((i) => i.isEnabled).length;
+  const enabledCount = items.filter((i) => i.isEnabled).length;
 
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <div className="page-header">
-          <h1 className="page-title">{t("startupItems.title")}</h1>
-          <p className="page-subtitle">{t("startupItems.subtitle")}</p>
-        </div>
+        <PageHeader
+          title={t("startupItems.title")}
+          subtitle={t("startupItems.subtitle")}
+          actions={
+            phase === "results" && (
+              <button className="btn btn-sm btn-secondary" onClick={scan}>
+                <RotateCcw size={14} />
+                {t("common.rescan")}
+              </button>
+            )
+          }
+        />
 
-        {!scanned && !isScanning && (
-          <div className="scan-container">
-            <div className="fade-in">
-              <div className="scan-circle-wrapper">
-                <div className="scan-circle-bg" />
-                <button className="scan-btn" onClick={handleScan}>
-                  <Power size={36} />
-                  {t("common.scan")}
-                </button>
-              </div>
-              <p className="scan-status">{t("startupItems.scanStatus")}</p>
-            </div>
-          </div>
+        {phase === "idle" && (
+          <ScanHero
+            icon={<Power size={36} />}
+            label={t("common.scan")}
+            hint={t("startupItems.scanStatus")}
+            onScan={scan}
+          />
         )}
 
-        {isScanning && (
-          <div className="scan-container fade-in" style={{ minHeight: 300 }}>
-            <PulseLoader label={t("startupItems.scanning")} size="lg" />
-            <ScanningLines />
-          </div>
+        {phase === "scanning" && (
+          <ScanningState label={t("startupItems.scanning")} />
         )}
 
-        {scanned && !isScanning && (
+        {phase === "results" && (
           <div className="fade-in">
-            <div className="search-bar">
-              <Search size={18} />
-              <input
-                type="text"
-                placeholder={t("startupItems.searchPlaceholder")}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+            <div className="filter-row">
+              <div className="search-bar search-bar-inline">
+                <Search size={16} />
+                <input
+                  type="search"
+                  placeholder={t("startupItems.searchPlaceholder")}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="chip-group">
+                {(["all", "enabled", "disabled"] as Filter[]).map((f) => (
+                  <button
+                    key={f}
+                    className={`chip ${filter === f ? "active" : ""}`}
+                    aria-pressed={filter === f}
+                    onClick={() => setFilter(f)}
+                  >
+                    {t(`startupItems.filter${f[0].toUpperCase()}${f.slice(1)}`)}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {filteredItems.length === 0 ? (
-              <div className="empty-state">
-                <Power size={48} />
-                <h3>{t("startupItems.noItems")}</h3>
-                <p>{t("startupItems.tryDifferent")}</p>
-              </div>
+            <p className="list-caption">
+              {t("startupItems.itemsInfo", {
+                count: items.length,
+                enabled: enabledCount,
+              })}
+            </p>
+
+            {visible.length === 0 ? (
+              <EmptyState
+                icon={<Power size={48} />}
+                title={t("startupItems.noItems")}
+                message={t("startupItems.tryDifferent")}
+              />
             ) : (
               <div className="results-container">
-                {filteredItems.map((item) => (
-                  <div
-                    key={item.path}
-                    className="result-row"
-                    style={{
-                      opacity: item.isEnabled ? 1 : 0.6,
-                    }}
-                  >
-                    <div className="result-row-left">
-                      <div
-                        className="result-row-icon"
-                        style={{
-                          background: item.iconDataUrl
-                            ? "transparent"
-                            : item.kind === "LaunchDaemon"
-                              ? "rgba(255, 107, 129, 0.15)"
-                              : "rgba(108, 92, 231, 0.15)",
-                          overflow: "hidden",
-                          borderRadius: "var(--radius-md)",
-                        }}
-                      >
-                        {item.iconDataUrl ? (
-                          <img
-                            src={item.iconDataUrl}
-                            alt={item.name}
-                            style={{
-                              width: 36,
-                              height: 36,
-                              objectFit: "contain",
-                            }}
-                          />
-                        ) : item.kind === "LaunchDaemon" ? (
-                          <Shield
-                            size={20}
-                            style={{
-                              color: "var(--danger)",
-                            }}
-                          />
-                        ) : (
-                          <User
-                            size={20}
-                            style={{
-                              color: "var(--accent-secondary)",
-                            }}
-                          />
-                        )}
-                      </div>
-                      <div className="result-row-info">
-                        <h4>{item.name}</h4>
+                {visible.map((item) => {
+                  const icon = item.appPath ? icons[item.appPath] : null;
+                  const isDaemon = item.kind === "LaunchDaemon";
+                  return (
+                    <div
+                      key={item.path}
+                      className={`result-row ${item.isEnabled ? "" : "is-disabled"}`}
+                    >
+                      <div className="result-row-left">
                         <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            marginTop: 2,
-                          }}
+                          className={`result-row-icon ${icon ? "has-image" : isDaemon ? "tone-danger" : ""}`}
                         >
-                          <span
-                            className={`startup-kind-badge ${
-                              item.kind === "LaunchDaemon" ? "daemon" : "agent"
-                            }`}
-                          >
-                            {item.kind === "LaunchDaemon"
-                              ? t("startupItems.daemon")
-                              : t("startupItems.agent")}
-                          </span>
-                          <span
-                            className="startup-path-truncated"
-                            title={item.programPath || item.path}
-                          >
-                            {truncatePath(item.programPath || item.path)}
-                          </span>
+                          {icon ? (
+                            <img src={icon} alt="" width={36} height={36} />
+                          ) : isDaemon ? (
+                            <Shield size={20} />
+                          ) : (
+                            <User size={20} />
+                          )}
+                        </div>
+                        <div className="result-row-info">
+                          <h4>{item.name}</h4>
+                          <div className="startup-meta">
+                            <span
+                              className={`startup-kind-badge ${isDaemon ? "daemon" : "agent"}`}
+                            >
+                              {isDaemon
+                                ? t("startupItems.daemon")
+                                : t("startupItems.agent")}
+                            </span>
+                            <span
+                              className="startup-path-truncated"
+                              title={item.programPath || item.path}
+                            >
+                              {truncatePath(item.programPath || item.label)}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="result-row-right">
-                      <div
-                        className={`startup-toggle ${item.isEnabled ? "on" : "off"} ${togglingPaths.has(item.path) ? "toggling" : ""}`}
-                        onClick={() => toggleEnabled(item)}
-                      >
-                        <div className="startup-toggle-thumb" />
+                      <div className="result-row-right">
+                        <button
+                          className="icon-btn"
+                          title={t("common.revealInFinder")}
+                          aria-label={t("common.revealInFinder")}
+                          onClick={() =>
+                            void api.shell.revealInFinder(item.path)
+                          }
+                        >
+                          <FolderSearch size={14} />
+                        </button>
+                        <Switch
+                          checked={item.isEnabled}
+                          busy={toggling.has(item.path)}
+                          label={t("startupItems.toggleLabel", {
+                            name: item.name,
+                          })}
+                          onChange={(value) => void setEnabled(item, value)}
+                        />
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         )}
       </div>
-
-      {scanned && !isScanning && filteredItems.length > 0 && (
-        <div className="page-actions-bar">
-          <div className="toolbar">
-            <div className="toolbar-left">
-              <span
-                style={{
-                  fontSize: 13,
-                  color: "var(--text-secondary)",
-                }}
-              >
-                {t("startupItems.itemsInfo", {
-                  count: filteredItems.length,
-                  enabled: enabledCount,
-                })}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
-}
-
-function getMockItems(): StartupItemWithIcon[] {
-  return [
-    {
-      name: "Docker Helper",
-      path: "~/Library/LaunchAgents/com.docker.helper.plist",
-      programPath: "/Applications/Docker.app/Contents/MacOS/com.docker.helper",
-      kind: "LaunchAgent",
-      isEnabled: true,
-      appPath: "/Applications/Docker.app",
-      iconDataUrl: null,
-    },
-    {
-      name: "Google Software Update",
-      path: "~/Library/LaunchAgents/com.google.keystone.agent.plist",
-      programPath:
-        "/Library/Google/GoogleSoftwareUpdate/GoogleSoftwareUpdate.bundle/Contents/Resources/GoogleSoftwareUpdateAgent.app/Contents/MacOS/GoogleSoftwareUpdateAgent",
-      kind: "LaunchAgent",
-      isEnabled: true,
-      appPath: null,
-      iconDataUrl: null,
-    },
-    {
-      name: "Spotify Web Helper",
-      path: "~/Library/LaunchAgents/com.spotify.webhelper.plist",
-      programPath: "/Applications/Spotify.app/Contents/MacOS/SpotifyWebHelper",
-      kind: "LaunchAgent",
-      isEnabled: true,
-      appPath: "/Applications/Spotify.app",
-      iconDataUrl: null,
-    },
-    {
-      name: "Creative Cloud Helper",
-      path: "/Library/LaunchAgents/com.adobe.AdobeCreativeCloud.plist",
-      programPath:
-        "/Applications/Utilities/Adobe Creative Cloud/ACC/Creative Cloud Helper.app/Contents/MacOS/Creative Cloud Helper",
-      kind: "LaunchAgent",
-      isEnabled: true,
-      appPath:
-        "/Applications/Utilities/Adobe Creative Cloud/ACC/Creative Cloud Helper.app",
-      iconDataUrl: null,
-    },
-    {
-      name: "Microsoft Update Assistant",
-      path: "/Library/LaunchAgents/com.microsoft.update.agent.plist",
-      programPath:
-        "/Library/Application Support/Microsoft/MAU2.0/Microsoft AutoUpdate.app/Contents/MacOS/Microsoft Update Assistant.app/Contents/MacOS/Microsoft Update Assistant",
-      kind: "LaunchAgent",
-      isEnabled: false,
-      appPath:
-        "/Library/Application Support/Microsoft/MAU2.0/Microsoft AutoUpdate.app",
-      iconDataUrl: null,
-    },
-    {
-      name: "Installer OS Message Tracing",
-      path: "/Library/LaunchDaemons/com.apple.installer.osmessagetracing.plist",
-      programPath: "/usr/sbin/osmessagetracing",
-      kind: "LaunchDaemon",
-      isEnabled: true,
-      appPath: null,
-      iconDataUrl: null,
-    },
-    {
-      name: "CCC Scheduled Task",
-      path: "/Library/LaunchDaemons/com.bombich.ccc.scheduledtask.plist",
-      programPath:
-        "/Library/PrivilegedHelperTools/com.bombich.ccc.scheduledtask",
-      kind: "LaunchDaemon",
-      isEnabled: true,
-      appPath: null,
-      iconDataUrl: null,
-    },
-    {
-      name: "VirtualBox Startup",
-      path: "/Library/LaunchDaemons/org.virtualbox.startup.plist",
-      programPath:
-        "/Library/Application Support/VirtualBox/LaunchDaemons/VirtualBoxStartup.sh",
-      kind: "LaunchDaemon",
-      isEnabled: false,
-      appPath: null,
-      iconDataUrl: null,
-    },
-  ];
 }

@@ -1,5 +1,5 @@
 /**
- * Premium loading/scanning animations inspired by MacSweep
+ * Loading and scanning animations.
  */
 
 interface ScanningOrbProps {
@@ -29,9 +29,9 @@ export function ScanningOrb({
       <svg className="scanning-orb-ring" viewBox={`0 0 ${size} ${size}`}>
         <defs>
           <linearGradient id="orbGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#6c5ce7" />
-            <stop offset="50%" stopColor="#a29bfe" />
-            <stop offset="100%" stopColor="#6c5ce7" />
+            <stop offset="0%" style={{ stopColor: "var(--accent-primary)" }} />
+            <stop offset="50%" style={{ stopColor: "var(--accent-secondary)" }} />
+            <stop offset="100%" style={{ stopColor: "var(--accent-primary)" }} />
           </linearGradient>
         </defs>
         {/* Track */}
@@ -40,7 +40,7 @@ export function ScanningOrb({
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="rgba(108, 92, 231, 0.1)"
+          style={{ stroke: "color-mix(in srgb, var(--accent-primary) 12%, transparent)" }}
           strokeWidth="3"
         />
         {/* Progress arc */}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Cpu,
   MemoryStick,
@@ -6,7 +6,7 @@ import {
   Zap,
   Globe,
   Search,
-  ShieldCheck,
+  Sparkles,
   ExternalLink,
   Power,
   XCircle,
@@ -20,59 +20,20 @@ import {
   RefreshCw,
 } from "lucide-react";
 import logoFull from "../assets/logo.png";
-import logoCompact from "../assets/logo-icon.png";
 import { useTranslation } from "react-i18next";
+import { usePolling } from "./hooks/use-polling";
+import { formatBytes } from "./utils";
+import type {
+  BatteryInfo,
+  CpuUsage,
+  DiskUsage,
+  MaintenanceTaskId,
+  MemoryUsage,
+  ProcessInfo,
+  TrayAPI,
+} from "./types";
 
-interface CpuUsage {
-  user: number;
-  system: number;
-  idle: number;
-  total: number;
-}
-
-interface MemoryUsage {
-  total: number;
-  used: number;
-  free: number;
-  percentUsed: number;
-}
-
-interface DiskUsage {
-  total: number;
-  used: number;
-  free: number;
-  percentUsed: number;
-  mount: string;
-}
-
-interface BatteryInfo {
-  cycleCount: number;
-  maxCapacity: number;
-  designCapacity: number;
-  currentCapacity: number;
-  percentCharge: number;
-  isCharging: boolean;
-  isFullyCharged: boolean;
-  condition: string;
-  temperature: number;
-  healthPercent: number;
-}
-
-interface ProcessInfo {
-  pid: number;
-  name: string;
-  cpu: number;
-  memory: number;
-  memoryBytes: number;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
+const api = (window as unknown as { electronAPI?: TrayAPI }).electronAPI;
 
 /**
  * Circular gauge component for displaying performance metrics.
@@ -141,7 +102,7 @@ function CircularGauge({
   );
 }
 
-type QuickActionStatus = "idle" | "running" | "done";
+type QuickActionStatus = "idle" | "running" | "done" | "error";
 
 interface QuickAction {
   id: string;
@@ -150,7 +111,8 @@ interface QuickAction {
   doneKey: string;
   icon: React.ReactNode;
   colorClass: string;
-  apiMethod: string;
+  /** Maintenance task to run, or undefined to open the main window. */
+  taskId?: MaintenanceTaskId;
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
@@ -161,7 +123,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     doneKey: "tray.memoryFreed",
     icon: <Zap size={14} />,
     colorClass: "purple",
-    apiMethod: "freeRam",
+    taskId: "freeRam",
   },
   {
     id: "flush-dns",
@@ -170,7 +132,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     doneKey: "tray.dnsFlushed",
     icon: <Globe size={14} />,
     colorClass: "green",
-    apiMethod: "flushDns",
+    taskId: "flushDns",
   },
   {
     id: "rebuild-spotlight",
@@ -179,21 +141,20 @@ const QUICK_ACTIONS: QuickAction[] = [
     doneKey: "tray.spotlightRebuilt",
     icon: <Search size={14} />,
     colorClass: "blue",
-    apiMethod: "rebuildSpotlight",
+    taskId: "rebuildSpotlight",
   },
   {
-    id: "repair-permissions",
-    labelKey: "tray.repairPermissions",
-    runningKey: "tray.repairingPermissions",
-    doneKey: "tray.permissionsFixed",
-    icon: <ShieldCheck size={14} />,
+    id: "smart-scan",
+    labelKey: "tray.smartScan",
+    runningKey: "tray.smartScan",
+    doneKey: "tray.smartScan",
+    icon: <Sparkles size={14} />,
     colorClass: "orange",
-    apiMethod: "repairPermissions",
   },
 ];
 
 export function TrayApp() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [cpu, setCpu] = useState<CpuUsage | null>(null);
   const [memory, setMemory] = useState<MemoryUsage | null>(null);
   const [disk, setDisk] = useState<DiskUsage | null>(null);
@@ -203,52 +164,63 @@ export function TrayApp() {
   const [actionStatuses, setActionStatuses] = useState<
     Record<string, QuickActionStatus>
   >({});
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    fetchData();
-    intervalRef.current = setInterval(fetchData, 3000);
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
+  const fetchData = useCallback(async () => {
+    if (!api) return;
+    const [cpuData, memData, diskData, batteryData, procData] =
+      await Promise.all([
+        api.system.cpuUsage(),
+        api.system.memoryUsage(),
+        api.system.diskUsage(),
+        api.system.batteryInfo(),
+        api.system.topProcesses(4),
+      ]);
+    setCpu(cpuData);
+    setMemory(memData);
+    setDisk(diskData);
+    setBattery(batteryData);
+    setProcesses(procData);
   }, []);
 
-  async function fetchData() {
-    try {
-      const api = (window as any).electronAPI;
-      if (!api) return;
+  // Polling pauses automatically while the popover is hidden.
+  usePolling(fetchData, 3000);
 
-      const [cpuData, memData, diskData, batteryData, procData] =
-        await Promise.all([
-          api.system.cpuUsage(),
-          api.system.memoryUsage(),
-          api.system.diskUsage(),
-          api.system.batteryInfo?.() ?? Promise.resolve(null),
-          api.system.topProcesses(),
-        ]);
-      setCpu(cpuData);
-      setMemory(memData);
-      setDisk(diskData);
-      setBattery(batteryData);
-      setProcesses(procData || []);
-    } catch {
-      // silently fail
-    }
-  }
+  // Follow the language chosen in the main window, refreshed on every open.
+  useEffect(() => {
+    if (!api) return;
+    const syncLanguage = () =>
+      api.settings
+        .load()
+        .then((s) => {
+          if (i18n.language !== s.language) void i18n.changeLanguage(s.language);
+        })
+        .catch(() => undefined);
+    void syncLanguage();
+    return api.tray.onShow(() => {
+      void syncLanguage();
+      void fetchData();
+    });
+  }, [i18n, fetchData]);
+
+  // Size the native window to the panel so nothing transparent blocks clicks.
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el || !api) return;
+    const observer = new ResizeObserver(() => {
+      void api.tray.resize(el.getBoundingClientRect().height + 16);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   async function handleKill(pid: number) {
     setKillingPids((prev) => new Set(prev).add(pid));
     try {
-      const api = (window as any).electronAPI;
-      if (api) {
-        await api.system.killProcess(pid);
+      const result = await api?.system.killProcess(pid);
+      if (result?.success) {
+        setProcesses((prev) => prev.filter((p) => p.pid !== pid));
       }
-      // Remove from list immediately
-      setProcesses((prev) => prev.filter((p) => p.pid !== pid));
-    } catch {
-      // silently fail
     } finally {
       setKillingPids((prev) => {
         const next = new Set(prev);
@@ -259,36 +231,34 @@ export function TrayApp() {
   }
 
   async function handleAction(action: QuickAction) {
-    const current = actionStatuses[action.id] || "idle";
-    if (current === "running") return;
+    if (!api || actionStatuses[action.id] === "running") return;
+    if (!action.taskId) {
+      void api.tray.openMainWindow("smart-scan");
+      return;
+    }
 
     setActionStatuses((prev) => ({ ...prev, [action.id]: "running" }));
+    let status: QuickActionStatus = "error";
     try {
-      const api = (window as any).electronAPI;
-      if (api && api.maintenance[action.apiMethod]) {
-        await api.maintenance[action.apiMethod]();
-      }
-      setActionStatuses((prev) => ({ ...prev, [action.id]: "done" }));
+      const [result] = await api.maintenance.run([action.taskId]);
+      status = result?.cancelled ? "idle" : result?.success ? "done" : "error";
+    } catch {
+      status = "error";
+    }
+    setActionStatuses((prev) => ({ ...prev, [action.id]: status }));
+    if (status !== "idle") {
       setTimeout(() => {
         setActionStatuses((prev) => ({ ...prev, [action.id]: "idle" }));
       }, 3000);
-    } catch {
-      setActionStatuses((prev) => ({ ...prev, [action.id]: "idle" }));
     }
   }
 
   function handleOpenMain() {
-    const api = (window as any).electronAPI;
-    if (api) {
-      api.tray.openMainWindow();
-    }
+    void api?.tray.openMainWindow();
   }
 
   function handleQuit() {
-    const api = (window as any).electronAPI;
-    if (api) {
-      api.tray.quit();
-    }
+    void api?.tray.quit();
   }
 
   function getOverallStatus(): { label: string; color: string } {
@@ -318,7 +288,7 @@ export function TrayApp() {
       {/* Arrow pointer */}
       <div className="tray-arrow" />
 
-      <div className="tray-panel">
+      <div className="tray-panel" ref={panelRef}>
         {/* Header */}
         <div className="tray-header">
           <div className="tray-header-left">
@@ -467,14 +437,14 @@ export function TrayApp() {
                   className="tray-battery-condition-value"
                   style={{
                     color:
-                      battery.condition === "Normal"
+                      battery.condition === "normal"
                         ? "#00d2a0"
-                        : battery.condition === "Fair"
+                        : battery.condition === "fair"
                           ? "#ffa502"
                           : "#ff6b6b",
                   }}
                 >
-                  {battery.condition}
+                  {t(`tray.conditions.${battery.condition}`)}
                 </span>
               </div>
             </div>
@@ -543,6 +513,8 @@ export function TrayApp() {
                     <Loader2 size={14} className="tray-spin" />
                   ) : st === "done" ? (
                     <CheckCircle2 size={14} />
+                  ) : st === "error" ? (
+                    <XCircle size={14} />
                   ) : (
                     action.icon
                   )}
@@ -552,7 +524,9 @@ export function TrayApp() {
                     ? t(action.runningKey)
                     : st === "done"
                       ? t(action.doneKey)
-                      : t(action.labelKey)}
+                      : st === "error"
+                        ? t("tray.actionFailed")
+                        : t(action.labelKey)}
                 </span>
               </button>
             );

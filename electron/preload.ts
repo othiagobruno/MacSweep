@@ -1,89 +1,65 @@
-import { contextBridge, ipcRenderer } from "electron";
-import type {
-  SystemJunkResult,
-  LargeFile,
-  AppInfo,
-  CpuUsage,
-  MemoryUsage,
-  DiskUsage,
-  MaintenanceResult,
-  CleanResult,
-  StartupItem,
-} from "../shared/types";
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
+import type { ElectronAPI, Unsubscribe } from "../shared/api";
 
-const electronAPI = {
-  window: {
-    close: (): Promise<void> => ipcRenderer.invoke("window:close"),
-    minimize: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
-  },
+function subscribe<T>(channel: string, callback: (payload: T) => void): Unsubscribe {
+  const listener = (_event: IpcRendererEvent, payload: T) => callback(payload);
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
+
+const electronAPI: ElectronAPI = {
   scan: {
-    systemJunk: (): Promise<SystemJunkResult[]> =>
-      ipcRenderer.invoke("scan:systemJunk"),
-    largeFiles: (options?: {
-      minSizeMB?: number;
-      maxDepth?: number;
-      excludedFolders?: string[];
-      scanHidden?: boolean;
-    }): Promise<LargeFile[]> => ipcRenderer.invoke("scan:largeFiles", options),
-    applications: (): Promise<AppInfo[]> =>
-      ipcRenderer.invoke("scan:applications"),
-    startupItems: (): Promise<StartupItem[]> =>
-      ipcRenderer.invoke("scan:startupItems"),
+    systemJunk: () => ipcRenderer.invoke("scan:systemJunk"),
+    largeFiles: (options) => ipcRenderer.invoke("scan:largeFiles", options),
+    applications: () => ipcRenderer.invoke("scan:applications"),
+    startupItems: () => ipcRenderer.invoke("scan:startupItems"),
+    onProgress: (callback) => subscribe("scan:progress", callback),
   },
   clean: {
-    files: (paths: string[]): Promise<CleanResult> =>
-      ipcRenderer.invoke("clean:files", paths),
+    files: (paths) => ipcRenderer.invoke("clean:files", paths),
+    filesAsAdmin: (paths) => ipcRenderer.invoke("clean:filesAsAdmin", paths),
+  },
+  apps: {
+    getIcon: (appPath) => ipcRenderer.invoke("apps:getIcon", appPath),
+    leftovers: (app) => ipcRenderer.invoke("apps:leftovers", app),
+    uninstall: (request) => ipcRenderer.invoke("apps:uninstall", request),
   },
   system: {
-    cpuUsage: (): Promise<CpuUsage> => ipcRenderer.invoke("system:cpuUsage"),
-    memoryUsage: (): Promise<MemoryUsage> =>
-      ipcRenderer.invoke("system:memoryUsage"),
-    diskUsage: (): Promise<DiskUsage> => ipcRenderer.invoke("system:diskUsage"),
+    cpuUsage: () => ipcRenderer.invoke("system:cpuUsage"),
+    memoryUsage: () => ipcRenderer.invoke("system:memoryUsage"),
+    diskUsage: () => ipcRenderer.invoke("system:diskUsage"),
+    batteryInfo: () => ipcRenderer.invoke("system:batteryInfo"),
+    topProcesses: (limit) => ipcRenderer.invoke("system:topProcesses", limit),
+    killProcess: (pid) => ipcRenderer.invoke("system:killProcess", pid),
+    info: () => ipcRenderer.invoke("system:info"),
   },
   maintenance: {
-    freeRam: (): Promise<MaintenanceResult> =>
-      ipcRenderer.invoke("maintenance:freeRam"),
-    flushDns: (): Promise<MaintenanceResult> =>
-      ipcRenderer.invoke("maintenance:flushDns"),
-    rebuildSpotlight: (): Promise<MaintenanceResult> =>
-      ipcRenderer.invoke("maintenance:rebuildSpotlight"),
-    repairPermissions: (): Promise<MaintenanceResult> =>
-      ipcRenderer.invoke("maintenance:repairPermissions"),
-  },
-  shell: {
-    moveToTrash: (path: string): Promise<void> =>
-      ipcRenderer.invoke("shell:moveToTrash", path),
-    forceDelete: (
-      paths: string[],
-    ): Promise<{ success: boolean; errors: string[] }> =>
-      ipcRenderer.invoke("shell:forceDelete", paths),
-  },
-  app: {
-    getIcon: (appPath: string): Promise<string | null> =>
-      ipcRenderer.invoke("app:getIcon", appPath),
+    run: (taskIds) => ipcRenderer.invoke("maintenance:run", taskIds),
   },
   startup: {
-    disableItem: (
-      plistPath: string,
-    ): Promise<{ success: boolean; message: string }> =>
-      ipcRenderer.invoke("startup:disableItem", plistPath),
-    enableItem: (
-      plistPath: string,
-    ): Promise<{ success: boolean; message: string }> =>
-      ipcRenderer.invoke("startup:enableItem", plistPath),
+    setEnabled: (item, enabled) =>
+      ipcRenderer.invoke("startup:setEnabled", item, enabled),
+  },
+  shell: {
+    moveToTrash: (paths) => ipcRenderer.invoke("shell:moveToTrash", paths),
+    revealInFinder: (path) => ipcRenderer.invoke("shell:revealInFinder", path),
+    openPath: (path) => ipcRenderer.invoke("shell:openPath", path),
+    quickLook: (path) => ipcRenderer.invoke("shell:quickLook", path),
+    openFullDiskAccessSettings: () =>
+      ipcRenderer.invoke("shell:openFullDiskAccessSettings"),
   },
   settings: {
-    load: (): Promise<Record<string, unknown>> =>
-      ipcRenderer.invoke("settings:load"),
-    save: (data: Record<string, unknown>): Promise<{ success: boolean }> =>
-      ipcRenderer.invoke("settings:save", data),
-    setLoginItem: (enabled: boolean): Promise<{ success: boolean }> =>
-      ipcRenderer.invoke("settings:setLoginItem", enabled),
-    setTrayVisible: (visible: boolean): Promise<{ success: boolean }> =>
-      ipcRenderer.invoke("settings:setTrayVisible", visible),
+    load: () => ipcRenderer.invoke("settings:load"),
+    save: (settings) => ipcRenderer.invoke("settings:save", settings),
+    chooseFolder: () => ipcRenderer.invoke("settings:chooseFolder"),
+  },
+  app: {
+    meta: () => ipcRenderer.invoke("app:meta"),
+    stats: () => ipcRenderer.invoke("app:stats"),
+    openReleases: () => ipcRenderer.invoke("app:openReleases"),
+    onNavigate: (callback) => subscribe("app:navigate", callback),
+    onStatsChanged: (callback) => subscribe("app:statsChanged", callback),
   },
 };
 
 contextBridge.exposeInMainWorld("electronAPI", electronAPI);
-
-export type ElectronAPI = typeof electronAPI;

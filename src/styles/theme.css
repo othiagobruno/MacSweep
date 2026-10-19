@@ -1,0 +1,64 @@
+/*
+ * Theme layer. index.css holds the base design; this file defines the
+ * per-theme tokens selected through <html data-theme="…">.
+ */
+
+:root {
+  --overlay-rgb: 255, 255, 255;
+  --accent-glow: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+  --shadow-glow: 0 4px 20px color-mix(in srgb, var(--accent-primary) 25%, transparent);
+  --font-sans: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-sans);
+  color-scheme: dark;
+}
+
+:root[data-theme="darker"] {
+  --bg-primary: #020204;
+  --bg-secondary: #08080e;
+  --bg-tertiary: #0f0f18;
+  --bg-card: rgba(12, 12, 22, 0.8);
+  --bg-card-hover: rgba(18, 18, 32, 0.9);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --overlay-rgb: 0, 0, 0;
+
+  --bg-primary: #f5f5f7;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #ebebf0;
+  --bg-card: rgba(255, 255, 255, 0.9);
+  --bg-card-hover: #ffffff;
+  --bg-glass: rgba(0, 0, 0, 0.03);
+
+  --text-primary: #1d1d1f;
+  --text-secondary: #5c5c6e;
+  --text-muted: #8e8e9c;
+
+  --success: #00a47d;
+  --success-glow: rgba(0, 164, 125, 0.18);
+  --warning: #c27c00;
+  --danger: #e5394f;
+  --danger-glow: rgba(229, 57, 79, 0.18);
+  --info: #1f7ae0;
+
+  --border-color: rgba(0, 0, 0, 0.08);
+  --border-hover: rgba(0, 0, 0, 0.16);
+
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+:root[data-theme="light"] .summary-card,
+:root[data-theme="light"] .perf-card,
+:root[data-theme="light"] .result-row,
+:root[data-theme="light"] .maintenance-card,
+:root[data-theme="light"] .settings-group,
+:root[data-theme="light"] .file-tree-group {
+  box-shadow: var(--shadow-sm);
+}
+
+:root[data-theme="light"] .dialog {
+  box-shadow: var(--shadow-lg);
+}

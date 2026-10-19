@@ -1,263 +1,306 @@
-import { useState } from "react";
-import { FileSearch, Trash2, Check, ArrowUpDown, File } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Eye,
+  File,
+  FileSearch,
+  FolderSearch,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ActionNotice } from "../components/action-notice";
+import { Checkbox } from "../components/checkbox";
 import { ConfirmDialog } from "../components/confirm-dialog";
-import { PulseLoader, ScanningLines } from "../components/loaders";
-import { formatBytes, formatDate, getExtColor } from "../utils";
-import { useAppState } from "../contexts/app-state-context";
+import { ActionBar, EmptyState, PageHeader, ScanHero, ScanningState } from "../components/page";
+import { useToast } from "../components/toast";
+import { useNavigation } from "../contexts/navigation-context";
 import { useSettings } from "../contexts/settings-context";
-import type { LargeFile } from "../types";
+import { api } from "../lib/api";
+import { requestDiskRefresh } from "../lib/events";
+import { formatBytes, formatDate, KIND_COLORS, shortenPath, sumBy } from "../utils";
+import type { FileKind, LargeFile } from "../types";
+
+type SortKey = "size" | "name" | "lastModified" | "lastAccessed";
+type Phase = "idle" | "scanning" | "results";
+
+const KINDS: FileKind[] = ["video", "archive", "diskImage", "audio", "image", "document", "other"];
 
 export function LargeFiles() {
-  const { t } = useTranslation();
-  const {
-    largeFiles: {
-      isScanning,
-      setIsScanning,
-      files,
-      setFiles,
-      selected,
-      setSelected,
-      sortBy,
-      setSortBy,
-      scanned,
-      setScanned,
-    },
-  } = useAppState();
-
+  const { t, i18n } = useTranslation();
+  const toast = useToast();
+  const { navigate } = useNavigation();
   const { settings } = useSettings();
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [feedback, setFeedback] = useState<{
-    tone: "info" | "warning" | "error";
-    message: string;
-  } | null>(null);
 
-  async function scanLargeFiles() {
-    if (window.electronAPI) {
-      return window.electronAPI.scan.largeFiles({
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [files, setFiles] = useState<LargeFile[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [kind, setKind] = useState<FileKind | "all">("all");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "size", desc: true });
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [isTrashing, setIsTrashing] = useState(false);
+
+  async function scan() {
+    setPhase("scanning");
+    try {
+      const results = await api.scan.largeFiles({
         minSizeMB: settings.minFileSize,
         maxDepth: settings.scanDepth,
         excludedFolders: settings.excludedFolders,
         scanHidden: settings.scanHiddenFiles,
+        skipSystemFiles: settings.skipSystemFiles,
       });
-    }
-
-    await new Promise((r) => setTimeout(r, 3000));
-    return getMockData();
-  }
-
-  async function handleScan() {
-    setIsScanning(true);
-    setScanned(false);
-    setFeedback(null);
-
-    try {
-      const results = await scanLargeFiles();
       setFiles(results);
-      setScanned(true);
-    } catch {
-      setFiles(getMockData());
-      setScanned(true);
-    }
-
-    setIsScanning(false);
-  }
-
-  function toggleFile(path: string) {
-    const newSelected = new Set(selected);
-    if (newSelected.has(path)) {
-      newSelected.delete(path);
-    } else {
-      newSelected.add(path);
-    }
-    setSelected(newSelected);
-  }
-
-  function toggleAll() {
-    if (selected.size === files.length) {
       setSelected(new Set());
-    } else {
-      setSelected(new Set(files.map((f) => f.path)));
+    } catch {
+      toast.show({ tone: "error", title: t("errors.scanFailed") });
     }
+    setPhase("results");
   }
 
-  const sortedFiles = [...files].sort((a, b) => {
-    switch (sortBy) {
-      case "size":
-        return b.size - a.size;
-      case "name":
-        return a.name.localeCompare(b.name);
-      case "date":
-        return (
-          new Date(b.lastModified).getTime() -
-          new Date(a.lastModified).getTime()
-        );
-      default:
-        return 0;
-    }
-  });
+  const kindCounts = useMemo(() => {
+    const counts = new Map<FileKind, number>();
+    for (const f of files) counts.set(f.kind, (counts.get(f.kind) ?? 0) + 1);
+    return counts;
+  }, [files]);
 
-  const selectedSize = files
-    .filter((f) => selected.has(f.path))
-    .reduce((sum, f) => sum + f.size, 0);
-
-  async function handleDelete() {
-    setShowDeleteConfirm(false);
-    setFeedback(null);
-
-    const paths = Array.from(selected);
-    let movedCount = 0;
-    let failedCount = 0;
-
-    if (window.electronAPI) {
-      for (const p of paths) {
-        try {
-          await window.electronAPI.shell.moveToTrash(p);
-          movedCount += 1;
-        } catch {
-          failedCount += 1;
-        }
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = files.filter(
+      (f) => (kind === "all" || f.kind === kind) && (!q || f.path.toLowerCase().includes(q)),
+    );
+    const dir = sort.desc ? -1 : 1;
+    return filtered.sort((a, b) => {
+      switch (sort.key) {
+        case "name":
+          return a.name.localeCompare(b.name) * dir;
+        case "size":
+          return (a.size - b.size) * dir;
+        default:
+          return (new Date(a[sort.key]).getTime() - new Date(b[sort.key]).getTime()) * dir;
       }
-    } else {
-      movedCount = paths.length;
-    }
+    });
+  }, [files, kind, query, sort]);
 
-    if (window.electronAPI) {
-      try {
-        setFiles(await scanLargeFiles());
-      } catch {
-        setFiles(files.filter((f) => !selected.has(f.path)));
-      }
-    } else {
-      setFiles(files.filter((f) => !selected.has(f.path)));
-    }
+  const selectedFiles = files.filter((f) => selected.has(f.path));
+  const selectedSize = sumBy(selectedFiles, (f) => f.size);
+  const visibleSelected = visible.filter((f) => selected.has(f.path)).length;
 
-    setSelected(new Set());
-    window.dispatchEvent(new Event("macsweep:disk-usage-refresh"));
-
-    if (movedCount > 0 && failedCount === 0) {
-      setFeedback({
-        tone: "info",
-        message: t("largeFiles.trashSuccess"),
-      });
-      return;
-    }
-
-    if (movedCount > 0) {
-      setFeedback({
-        tone: "warning",
-        message: t("largeFiles.trashPartial"),
-      });
-      return;
-    }
-
-    setFeedback({
-      tone: "error",
-      message: t("largeFiles.trashFailed"),
+  function toggle(path: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
     });
   }
+
+  function toggleVisible() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const allVisible = visible.length > 0 && visible.every((f) => next.has(f.path));
+      for (const f of visible) {
+        if (allVisible) next.delete(f.path);
+        else next.add(f.path);
+      }
+      return next;
+    });
+  }
+
+  function sortBy(key: SortKey) {
+    setSort((prev) => ({ key, desc: prev.key === key ? !prev.desc : key !== "name" }));
+  }
+
+  async function handleTrash() {
+    setShowConfirm(false);
+    setIsTrashing(true);
+    try {
+      const { moved, failed } = await api.shell.moveToTrash(Array.from(selected));
+      const movedSet = new Set(moved);
+      setFiles((prev) => prev.filter((f) => !movedSet.has(f.path)));
+      setSelected(new Set(failed));
+      requestDiskRefresh();
+
+      if (moved.length > 0) {
+        toast.show({
+          tone: failed.length ? "warning" : "success",
+          title: t("largeFiles.trashSuccess", { count: moved.length }),
+          message: failed.length
+            ? t("largeFiles.trashPartial", { count: failed.length })
+            : t("largeFiles.trashSuccessDesc"),
+        });
+      } else {
+        toast.show({ tone: "error", title: t("largeFiles.trashFailed") });
+      }
+    } finally {
+      setIsTrashing(false);
+    }
+  }
+
+  const SortHeader = ({ k, label }: { k: SortKey; label: string }) => (
+    <th aria-sort={sort.key === k ? (sort.desc ? "descending" : "ascending") : "none"}>
+      <button className={`th-sort ${sort.key === k ? "active" : ""}`} onClick={() => sortBy(k)}>
+        {label}
+        {sort.key === k && (sort.desc ? <ArrowDown size={12} /> : <ArrowUp size={12} />)}
+      </button>
+    </th>
+  );
 
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <div className="page-header">
-          <h1 className="page-title">{t("largeFiles.title")}</h1>
-          <p className="page-subtitle">{t("largeFiles.subtitle")}</p>
-        </div>
+        <PageHeader
+          title={t("largeFiles.title")}
+          subtitle={t("largeFiles.subtitle")}
+          actions={
+            phase === "results" && (
+              <button className="btn btn-sm btn-secondary" onClick={scan}>
+                <RotateCcw size={14} />
+                {t("common.rescan")}
+              </button>
+            )
+          }
+        />
 
-        {feedback && (
-          <ActionNotice tone={feedback.tone} message={feedback.message} />
+        {phase === "idle" && (
+          <ScanHero
+            icon={<FileSearch size={36} />}
+            label={t("common.scan")}
+            hint={t("largeFiles.scanStatus", { size: settings.minFileSize, depth: settings.scanDepth })}
+            onScan={scan}
+            footer={
+              <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => navigate("settings")}>
+                <SlidersHorizontal size={14} />
+                {t("largeFiles.adjustSettings")}
+              </button>
+            }
+          />
         )}
 
-        {!scanned && !isScanning && (
-          <div className="scan-container">
-            <div className="fade-in">
-              <div className="scan-circle-wrapper">
-                <div className="scan-circle-bg" />
-                <button className="scan-btn" onClick={handleScan}>
-                  <FileSearch size={36} />
-                  {t("common.scan")}
-                </button>
-              </div>
-              <p className="scan-status">
-                {t("largeFiles.scanStatus", { size: settings.minFileSize })}
-              </p>
-            </div>
-          </div>
+        {phase === "scanning" && <ScanningState label={t("largeFiles.scanning")} />}
+
+        {phase === "results" && files.length === 0 && (
+          <EmptyState
+            icon={<FileSearch size={48} />}
+            title={t("largeFiles.noLargeFiles")}
+            message={t("largeFiles.diskOrganized")}
+          />
         )}
 
-        {isScanning && (
-          <div className="scan-container fade-in" style={{ minHeight: 300 }}>
-            <PulseLoader label={t("largeFiles.scanning")} size="lg" />
-            <ScanningLines />
-          </div>
-        )}
-
-        {scanned && !isScanning && (
+        {phase === "results" && files.length > 0 && (
           <div className="fade-in">
-            {files.length === 0 ? (
-              <div className="empty-state">
-                <FileSearch size={48} />
-                <h3>{t("largeFiles.noLargeFiles")}</h3>
-                <p>{t("largeFiles.diskOrganized")}</p>
+            <div className="filter-row">
+              <div className="search-bar search-bar-inline">
+                <Search size={16} />
+                <input
+                  type="search"
+                  placeholder={t("common.search")}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
               </div>
+              <div className="chip-group" role="tablist">
+                <button
+                  role="tab"
+                  aria-selected={kind === "all"}
+                  className={`chip ${kind === "all" ? "active" : ""}`}
+                  onClick={() => setKind("all")}
+                >
+                  {t("common.all")} <span className="chip-count">{files.length}</span>
+                </button>
+                {KINDS.filter((k) => kindCounts.has(k)).map((k) => (
+                  <button
+                    key={k}
+                    role="tab"
+                    aria-selected={kind === k}
+                    className={`chip ${kind === k ? "active" : ""}`}
+                    onClick={() => setKind(k)}
+                  >
+                    <span className="chip-dot" style={{ background: KIND_COLORS[k] }} />
+                    {t(`largeFiles.kinds.${k}`)} <span className="chip-count">{kindCounts.get(k)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {visible.length === 0 ? (
+              <EmptyState icon={<Search size={40} />} title={t("largeFiles.noMatches")} />
             ) : (
               <table className="file-list">
                 <thead>
                   <tr>
-                    <th style={{ width: 40 }}></th>
-                    <th>{t("common.name")}</th>
-                    <th>{t("common.size")}</th>
-                    <th>{t("common.lastModified")}</th>
+                    <th style={{ width: 40 }}>
+                      <Checkbox
+                        checked={visibleSelected === visible.length}
+                        indeterminate={visibleSelected > 0 && visibleSelected < visible.length}
+                        onChange={toggleVisible}
+                        label={t("common.selectAll")}
+                      />
+                    </th>
+                    <SortHeader k="name" label={t("common.name")} />
+                    <SortHeader k="size" label={t("common.size")} />
+                    <SortHeader k="lastAccessed" label={t("common.lastOpened")} />
+                    <th style={{ width: 72 }} />
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedFiles.map((file) => (
-                    <tr key={file.path}>
+                  {visible.map((file) => (
+                    <tr
+                      key={file.path}
+                      className={selected.has(file.path) ? "selected" : ""}
+                      onClick={() => toggle(file.path)}
+                      onDoubleClick={() => void api.shell.quickLook(file.path)}
+                    >
                       <td>
-                        <div
-                          className={`checkbox ${selected.has(file.path) ? "checked" : ""}`}
-                          onClick={() => toggleFile(file.path)}
-                        >
-                          {selected.has(file.path) && <Check size={12} />}
-                        </div>
+                        <Checkbox
+                          checked={selected.has(file.path)}
+                          onChange={() => toggle(file.path)}
+                          label={file.name}
+                        />
                       </td>
                       <td>
                         <div className="file-name">
-                          <File
-                            size={16}
-                            style={{
-                              color: getExtColor(file.extension),
-                            }}
-                          />
-                          <span>{file.name}</span>
-                          <span
-                            className="file-ext-badge"
-                            style={{
-                              color: getExtColor(file.extension),
-                            }}
-                          >
-                            {file.extension || "?"}
-                          </span>
+                          <File size={16} style={{ color: KIND_COLORS[file.kind], flexShrink: 0 }} />
+                          <div className="file-name-text">
+                            <span className="file-name-title" title={file.name}>
+                              {file.name}
+                            </span>
+                            <span className="file-name-path" title={file.path}>
+                              {shortenPath(file.path.slice(0, file.path.length - file.name.length - 1))}
+                            </span>
+                          </div>
                         </div>
                       </td>
-                      <td
-                        style={{
-                          fontWeight: 600,
-                          fontSize: "12px",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {formatBytes(file.size)}
-                      </td>
-                      <td
-                        style={{
-                          color: "var(--text-secondary)",
-                          fontSize: "12px",
-                        }}
-                      >
-                        {formatDate(file.lastModified)}
+                      <td className="cell-size">{formatBytes(file.size)}</td>
+                      <td className="cell-muted">{formatDate(file.lastAccessed, i18n.language)}</td>
+                      <td>
+                        <div className="row-actions">
+                          <button
+                            className="icon-btn"
+                            title={t("common.quickLook")}
+                            aria-label={t("common.quickLook")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void api.shell.quickLook(file.path);
+                            }}
+                          >
+                            <Eye size={14} />
+                          </button>
+                          <button
+                            className="icon-btn"
+                            title={t("common.revealInFinder")}
+                            aria-label={t("common.revealInFinder")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void api.shell.revealInFinder(file.path);
+                            }}
+                          >
+                            <FolderSearch size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -268,134 +311,37 @@ export function LargeFiles() {
         )}
       </div>
 
-      {scanned && !isScanning && files.length > 0 && (
-        <div className="page-actions-bar">
-          <div className="toolbar">
-            <div className="toolbar-left">
-              <div
-                className={`checkbox ${selected.size === files.length && files.length > 0 ? "checked" : ""}`}
-                onClick={toggleAll}
-              >
-                {selected.size === files.length && files.length > 0 && (
-                  <Check size={12} />
-                )}
-              </div>
-              <span
-                style={{
-                  fontSize: 13,
-                  color: "var(--text-secondary)",
-                }}
-              >
-                {t("largeFiles.selectedInfo", { count: selected.size })}
-                {selected.size > 0 && ` (${formatBytes(selectedSize)})`}
-              </span>
-            </div>
-            <div className="toolbar-right">
-              <button
-                className="btn btn-sm btn-secondary"
-                onClick={() =>
-                  setSortBy(
-                    sortBy === "size"
-                      ? "date"
-                      : sortBy === "date"
-                        ? "name"
-                        : "size",
-                  )
-                }
-              >
-                <ArrowUpDown size={14} />
-                {sortBy === "size"
-                  ? t("common.size")
-                  : sortBy === "date"
-                    ? t("common.date")
-                    : t("common.name")}
-              </button>
-              <button
-                className="btn btn-danger btn-sm"
-                disabled={selected.size === 0}
-                onClick={() => setShowDeleteConfirm(true)}
-              >
-                <Trash2 size={14} />
-                {t("common.delete")}
-              </button>
-            </div>
+      {phase === "results" && files.length > 0 && (
+        <ActionBar>
+          <div className="toolbar-left">
+            <span className="toolbar-info">
+              {selected.size > 0
+                ? `${t("largeFiles.selectedInfo", { count: selected.size })} · ${formatBytes(selectedSize)}`
+                : t("largeFiles.summary", { count: files.length, size: formatBytes(sumBy(files, (f) => f.size)) })}
+            </span>
           </div>
-        </div>
+          <div className="toolbar-right">
+            <button
+              className="btn btn-danger btn-sm"
+              disabled={selected.size === 0 || isTrashing}
+              onClick={() => setShowConfirm(true)}
+            >
+              <Trash2 size={14} />
+              {t("largeFiles.moveToTrash")}
+            </button>
+          </div>
+        </ActionBar>
       )}
 
       <ConfirmDialog
-        isOpen={showDeleteConfirm}
+        isOpen={showConfirm}
         title={t("largeFiles.confirmTitle")}
-        message={t("largeFiles.confirmMessage", {
-          count: selected.size,
-          size: formatBytes(selectedSize),
-        })}
+        message={t("largeFiles.confirmMessage", { count: selected.size, size: formatBytes(selectedSize) })}
         confirmLabel={t("largeFiles.moveToTrash")}
         variant="danger"
-        onConfirm={handleDelete}
-        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={handleTrash}
+        onCancel={() => setShowConfirm(false)}
       />
     </div>
   );
-}
-
-function getMockData(): LargeFile[] {
-  return [
-    {
-      path: "/Users/user/Downloads/movie.mp4",
-      name: "movie.mp4",
-      size: 4.2 * 1024 * 1024 * 1024,
-      lastModified: "2025-08-15T10:30:00Z",
-      extension: ".mp4",
-    },
-    {
-      path: "/Users/user/Downloads/installer.dmg",
-      name: "installer.dmg",
-      size: 2.8 * 1024 * 1024 * 1024,
-      lastModified: "2025-06-22T14:15:00Z",
-      extension: ".dmg",
-    },
-    {
-      path: "/Users/user/Documents/backup.zip",
-      name: "backup.zip",
-      size: 1.5 * 1024 * 1024 * 1024,
-      lastModified: "2025-09-01T08:00:00Z",
-      extension: ".zip",
-    },
-    {
-      path: "/Users/user/Downloads/game.iso",
-      name: "game.iso",
-      size: 980 * 1024 * 1024,
-      lastModified: "2025-04-10T16:45:00Z",
-      extension: ".iso",
-    },
-    {
-      path: "/Users/user/Videos/recording.mov",
-      name: "recording.mov",
-      size: 720 * 1024 * 1024,
-      lastModified: "2025-11-28T09:20:00Z",
-      extension: ".mov",
-    },
-    {
-      path: "/Users/user/Downloads/photoshop.pkg",
-      name: "photoshop.pkg",
-      size: 580 * 1024 * 1024,
-      lastModified: "2025-07-03T11:10:00Z",
-      extension: ".pkg",
-    },
-    {
-      path: "/Users/user/Documents/design.psd",
-      name: "design.psd",
-      size: 420 * 1024 * 1024,
-      lastModified: "2025-12-15T13:30:00Z",
-      extension: ".psd",
-    },
-    {
-      path: "/Users/user/Downloads/archive.zip",
-      name: "archive.zip",
-      size: 350 * 1024 * 1024,
-      lastModified: "2025-10-20T07:55:00Z",
-      extension: ".zip",
-    },
-  ];
 }

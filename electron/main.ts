@@ -1,309 +1,235 @@
-import { app, BrowserWindow, ipcMain, nativeImage, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  Menu,
+  nativeImage,
+  nativeTheme,
+  shell,
+  type MenuItemConstructorOptions,
+} from "electron";
 import path from "node:path";
-import fs from "node:fs";
-import os from "node:os";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import {
-  scanSystemJunk,
-  scanLargeFiles,
-  scanApplications,
-} from "./services/scanner";
-import { cleanFiles } from "./services/cleaner";
-import {
-  getCpuUsage,
-  getMemoryUsage,
-  getDiskUsage,
-  getBatteryInfo,
-  getTopProcesses,
-  killProcess,
-} from "./services/system-info";
-import {
-  freeRam,
-  flushDns,
-  rebuildSpotlight,
-  repairPermissions,
-} from "./services/maintenance";
+import { registerIpcHandlers, RELEASES_URL } from "./ipc";
 import { createTray, destroyTray } from "./tray";
-import {
-  scanStartupItems,
-  disableStartupItem,
-  enableStartupItem,
-} from "./services/startup-items";
-import {
-  loadSettings,
-  saveSettings,
-  type AppSettings,
-} from "./services/settings-store";
-
-const execFileAsync = promisify(execFile);
+import { startScheduler } from "./scheduler";
+import { loadSettings } from "./services/settings-store";
+import type { AppStats, Page } from "../shared/types";
 
 process.env.DIST = path.join(__dirname, "../dist");
-process.env.VITE_PUBLIC = app.isPackaged
-  ? process.env.DIST
-  : path.join(process.env.DIST, "../public");
-
-let win: BrowserWindow | null;
 
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
+const isDev = Boolean(VITE_DEV_SERVER_URL);
 
-const iconPath = path.join(
-  app.isPackaged
-    ? path.dirname(app.getPath("exe"))
-    : path.join(__dirname, ".."),
-  "assets",
-  "icon.png",
-);
+const iconPath = app.isPackaged
+  ? path.join(process.resourcesPath, "assets", "icon.png")
+  : path.join(__dirname, "..", "assets", "icon.png");
 
-function createWindow() {
-  win = new BrowserWindow({
+let mainWindow: BrowserWindow | null = null;
+let isQuitting = false;
+
+export function getMainWindow(): BrowserWindow | null {
+  return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+}
+
+function backgroundColor(): string {
+  const { theme } = loadSettings();
+  const light =
+    theme === "light" || (theme === "system" && !nativeTheme.shouldUseDarkColors);
+  if (light) return "#f5f5f7";
+  return theme === "darker" ? "#020204" : "#0a0a0f";
+}
+
+function createWindow(): BrowserWindow {
+  const win = new BrowserWindow({
     icon: iconPath,
-    width: 1100,
-    height: 750,
-    resizable: false,
-    fullscreenable: false,
-    maximizable: false,
+    width: 1180,
+    height: 780,
+    minWidth: 940,
+    minHeight: 640,
+    show: false,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 16, y: 18 },
-    backgroundColor: "#0a0a0f",
+    backgroundColor: backgroundColor(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
     },
+  });
+
+  win.once("ready-to-show", () => win.show());
+
+  // macOS convention: closing the window keeps the app (and tray) alive.
+  win.on("close", (event) => {
+    if (!isQuitting && process.platform === "darwin") {
+      event.preventDefault();
+      win.hide();
+    }
+  });
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = null;
+  });
+
+  // Never navigate away from the app or open new Electron windows.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("https://")) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    if (!isDev || !url.startsWith(VITE_DEV_SERVER_URL!)) event.preventDefault();
   });
 
   if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL);
+    void win.loadURL(VITE_DEV_SERVER_URL);
   } else {
-    win.loadFile(path.join(process.env.DIST!, "index.html"));
+    void win.loadFile(path.join(process.env.DIST!, "index.html"));
+  }
+  return win;
+}
+
+/** Show (creating if needed) the main window, optionally on a given page. */
+export function showMainWindow(page?: Page): void {
+  let win = getMainWindow();
+  if (!win) {
+    win = mainWindow = createWindow();
+    if (page) {
+      win.webContents.once("did-finish-load", () =>
+        win?.webContents.send("app:navigate", page),
+      );
+    }
+  } else if (page) {
+    win.webContents.send("app:navigate", page);
+  }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function broadcastStats(stats: AppStats): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("app:statsChanged", stats);
   }
 }
 
-/**
- * Extract an app icon using macOS native tools (sips),
- * bypassing Electron's nativeImage to avoid Chromium
- * NOTREACHED crashes.
- */
-async function getAppIconDataUrl(appPath: string): Promise<string | null> {
-  try {
-    const infoPlistPath = path.join(appPath, "Contents", "Info.plist");
-
-    // Read icon filename from Info.plist using defaults
-    const { stdout: iconNameRaw } = await execFileAsync("defaults", [
-      "read",
-      infoPlistPath,
-      "CFBundleIconFile",
-    ]);
-
-    let iconFile = iconNameRaw.trim();
-    if (!iconFile.endsWith(".icns")) {
-      iconFile += ".icns";
-    }
-
-    const icnsPath = path.join(appPath, "Contents", "Resources", iconFile);
-
-    // Verify the icns file exists
-    await fs.promises.access(icnsPath);
-
-    // Convert to PNG using sips (macOS built-in)
-    const tmpFile = path.join(
-      os.tmpdir(),
-      `cmm_icon_${Date.now()}_${Math.random().toString(36).slice(2)}.png`,
-    );
-
-    await execFileAsync("sips", [
-      "-s",
-      "format",
-      "png",
-      "-z",
-      "64",
-      "64",
-      icnsPath,
-      "--out",
-      tmpFile,
-    ]);
-
-    const pngBuffer = await fs.promises.readFile(tmpFile);
-    // Cleanup temp file
-    fs.promises.unlink(tmpFile).catch(() => {});
-
-    return `data:image/png;base64,${pngBuffer.toString("base64")}`;
-  } catch {
-    return null;
-  }
-}
-
-// IPC Handlers
-ipcMain.handle("scan:systemJunk", async () => {
-  return await scanSystemJunk();
-});
-
-ipcMain.handle(
-  "scan:largeFiles",
-  async (
-    _event,
-    options?: {
-      minSizeMB?: number;
-      maxDepth?: number;
-      excludedFolders?: string[];
-      scanHidden?: boolean;
-    },
-  ) => {
-    return await scanLargeFiles(options ?? {});
-  },
-);
-
-ipcMain.handle("scan:applications", async () => {
-  return await scanApplications();
-});
-
-ipcMain.handle("clean:files", async (_event, filePaths: string[]) => {
-  return await cleanFiles(filePaths);
-});
-
-ipcMain.handle("system:cpuUsage", async () => {
-  return await getCpuUsage();
-});
-
-ipcMain.handle("system:memoryUsage", async () => {
-  return getMemoryUsage();
-});
-
-ipcMain.handle("system:diskUsage", async () => {
-  return await getDiskUsage();
-});
-
-ipcMain.handle("system:batteryInfo", async () => {
-  return await getBatteryInfo();
-});
-
-ipcMain.handle("system:topProcesses", async () => {
-  return await getTopProcesses();
-});
-
-ipcMain.handle("system:killProcess", async (_event, pid: number) => {
-  return await killProcess(pid);
-});
-
-ipcMain.handle("maintenance:freeRam", async () => {
-  return await freeRam();
-});
-
-ipcMain.handle("maintenance:flushDns", async () => {
-  return await flushDns();
-});
-
-ipcMain.handle("maintenance:rebuildSpotlight", async () => {
-  return await rebuildSpotlight();
-});
-
-ipcMain.handle("maintenance:repairPermissions", async () => {
-  return await repairPermissions();
-});
-
-ipcMain.handle("shell:moveToTrash", async (_event, filePath: string) => {
-  return shell.trashItem(filePath);
-});
-
-ipcMain.handle(
-  "shell:forceDelete",
-  async (
-    _event,
-    filePaths: string[],
-  ): Promise<{ success: boolean; errors: string[] }> => {
-    const errors: string[] = [];
-
-    // Build a single rm command for all paths
-    const escapedPaths = filePaths.map((p) => `"${p.replace(/"/g, '\\"')}"`);
-    const rmCommand = `rm -rf ${escapedPaths.join(" ")}`;
-
-    try {
-      await execFileAsync("osascript", [
-        "-e",
-        `do shell script "${rmCommand.replace(/"/g, '\\"')}" with administrator privileges`,
-      ]);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // User cancelled the auth dialog
-      if (msg.includes("-128")) {
-        return {
-          success: false,
-          errors: ["Authorization cancelled by user"],
-        };
-      }
-      errors.push(msg);
-    }
-
-    return { success: errors.length === 0, errors };
-  },
-);
-
-ipcMain.handle("app:getIcon", async (_event, appPath: string) => {
-  return await getAppIconDataUrl(appPath);
-});
-
-ipcMain.handle("scan:startupItems", async () => {
-  return await scanStartupItems();
-});
-
-ipcMain.handle("startup:disableItem", async (_event, plistPath: string) => {
-  return await disableStartupItem(plistPath);
-});
-
-ipcMain.handle("startup:enableItem", async (_event, plistPath: string) => {
-  return await enableStartupItem(plistPath);
-});
-
-// === SETTINGS ===
-ipcMain.handle("settings:load", async () => {
-  return loadSettings();
-});
-
-ipcMain.handle("settings:save", async (_event, settings: AppSettings) => {
-  saveSettings(settings);
-  return { success: true };
-});
-
-ipcMain.handle("settings:setLoginItem", async (_event, enabled: boolean) => {
-  app.setLoginItemSettings({
-    openAtLogin: enabled,
-    openAsHidden: true,
+function buildMenu(): void {
+  const nav = (page: Page, label: string, accelerator: string): MenuItemConstructorOptions => ({
+    label,
+    accelerator,
+    click: () => showMainWindow(page),
   });
-  return { success: true };
-});
 
-ipcMain.handle("settings:setTrayVisible", async (_event, visible: boolean) => {
-  if (visible) {
-    if (win) createTray(win);
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: app.getName(),
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        nav("settings", "Settings…", "CmdOrCtrl+,"),
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
+    { role: "editMenu" },
+    {
+      label: "Go",
+      submenu: [
+        nav("smart-scan", "Smart Scan", "CmdOrCtrl+1"),
+        nav("system-junk", "System Junk", "CmdOrCtrl+2"),
+        nav("large-files", "Large Files", "CmdOrCtrl+3"),
+        nav("performance", "Performance", "CmdOrCtrl+4"),
+        nav("uninstaller", "Uninstaller", "CmdOrCtrl+5"),
+        nav("maintenance", "Maintenance", "CmdOrCtrl+6"),
+        nav("startup-items", "Startup Items", "CmdOrCtrl+7"),
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        ...(isDev
+          ? ([{ role: "reload" }, { role: "toggleDevTools" }, { type: "separator" }] as MenuItemConstructorOptions[])
+          : []),
+        { role: "togglefullscreen" },
+      ],
+    },
+    { role: "windowMenu" },
+    {
+      role: "help",
+      submenu: [
+        { label: "MacSweep Releases", click: () => void shell.openExternal(RELEASES_URL) },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function applySystemIntegrations(): void {
+  const settings = loadSettings();
+  if (app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: settings.launchAtLogin, openAsHidden: true });
+  }
+  if (settings.showInMenuBar) {
+    createTray({ openMainWindow: showMainWindow });
   } else {
     destroyTray();
   }
-  return { success: true };
-});
+}
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-    win = null;
-  }
-});
+// Only one instance: a second launch just focuses the existing window.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => showMainWindow());
 
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
+  app.on("before-quit", () => {
+    isQuitting = true;
+  });
 
-app.whenReady().then(() => {
-  // Set dock icon on macOS
-  if (process.platform === "darwin") {
-    const dockIcon = nativeImage.createFromPath(iconPath);
-    if (!dockIcon.isEmpty()) {
-      app.dock.setIcon(dockIcon);
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") app.quit();
+  });
+
+  app.on("activate", () => showMainWindow());
+
+  app.whenReady().then(() => {
+    app.setAboutPanelOptions({
+      applicationName: "MacSweep",
+      applicationVersion: app.getVersion(),
+      copyright: `© ${new Date().getFullYear()} MacSweep`,
+    });
+
+    if (process.platform === "darwin" && !app.isPackaged) {
+      const dockIcon = nativeImage.createFromPath(iconPath);
+      if (!dockIcon.isEmpty()) app.dock.setIcon(dockIcon);
     }
-  }
 
-  createWindow();
-  createTray(win);
-});
+    registerIpcHandlers({
+      onSettingsChanged: (previous, next) => {
+        if (
+          previous.launchAtLogin !== next.launchAtLogin ||
+          previous.showInMenuBar !== next.showInMenuBar
+        ) {
+          applySystemIntegrations();
+        }
+      },
+      onStatsChanged: broadcastStats,
+    });
+
+    buildMenu();
+
+    // Launched hidden at login: stay in the menu bar until summoned.
+    const openedAtLogin = app.getLoginItemSettings().wasOpenedAsHidden;
+    if (!openedAtLogin) showMainWindow();
+    applySystemIntegrations();
+
+    startScheduler({
+      onOpenSmartScan: () => showMainWindow("smart-scan"),
+      onStatsChanged: broadcastStats,
+    });
+  });
+}

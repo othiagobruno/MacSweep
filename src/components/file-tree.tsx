@@ -1,155 +1,137 @@
 import { useState } from "react";
-import { Check, ChevronRight, File, FolderOpen, Minus } from "lucide-react";
-import { formatBytes } from "../utils";
+import { ChevronRight, FolderSearch } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { Checkbox } from "./checkbox";
+import { JunkIcon } from "./junk-meta";
+import { api } from "../lib/api";
+import { formatBytes, shortenPath, sumBy } from "../utils";
 import type { SystemJunkResult } from "../types";
 
-interface FileTreeProps {
+interface JunkTreeProps {
   categories: SystemJunkResult[];
-  selectedFiles: Set<string>;
+  selected: Set<string>;
+  filter: string;
   onToggleFile: (path: string) => void;
-  onToggleCategory: (category: string) => void;
-  onToggleAll: () => void;
+  onToggleCategory: (category: SystemJunkResult) => void;
 }
 
-export function FileTree({
+export function JunkTree({
   categories,
-  selectedFiles,
+  selected,
+  filter,
   onToggleFile,
   onToggleCategory,
-}: FileTreeProps) {
+}: JunkTreeProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const query = filter.trim().toLowerCase();
 
-  function toggleExpand(category: string) {
-    const next = new Set(expanded);
-    if (next.has(category)) {
-      next.delete(category);
-    } else {
-      next.add(category);
-    }
-    setExpanded(next);
+  function toggleExpand(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
-
-  function getCategoryState(cat: SystemJunkResult) {
-    const total = cat.files.length;
-    if (total === 0) return "none";
-    const selectedCount = cat.files.filter((f) =>
-      selectedFiles.has(f.path),
-    ).length;
-    if (selectedCount === 0) return "none";
-    if (selectedCount === total) return "all";
-    return "partial";
-  }
-
-  function getCategorySelectedSize(cat: SystemJunkResult) {
-    return cat.files
-      .filter((f) => selectedFiles.has(f.path))
-      .reduce((sum, f) => sum + f.size, 0);
-  }
-
-  function shortenPath(filePath: string) {
-    const home = "/Users/";
-    if (filePath.startsWith(home)) {
-      const afterUsers = filePath.substring(home.length);
-      const slashIdx = afterUsers.indexOf("/");
-      if (slashIdx !== -1) {
-        return "~" + afterUsers.substring(slashIdx);
-      }
-    }
-    return filePath;
-  }
-
-  const sortedCategories = [...categories].sort(
-    (a, b) => b.totalSize - a.totalSize,
-  );
 
   return (
     <div className="file-tree">
-      {sortedCategories.map((cat) => {
-        const isExpanded = expanded.has(cat.category);
-        const state = getCategoryState(cat);
-        const selectedSize = getCategorySelectedSize(cat);
-        const sortedFiles = [...cat.files].sort((a, b) => b.size - a.size);
+      {categories.map((cat) => {
+        const files = query
+          ? cat.files.filter((f) => f.path.toLowerCase().includes(query))
+          : cat.files;
+        if (query && files.length === 0) return null;
+
+        // While filtering, groups open automatically so matches are visible.
+        const isOpen = query ? true : expanded.has(cat.id);
+        const selectedCount = cat.files.filter((f) => selected.has(f.path)).length;
+        const selectedSize = sumBy(
+          cat.files.filter((f) => selected.has(f.path)),
+          (f) => f.size,
+        );
+        const label = t(`junk.${cat.id}`);
 
         return (
-          <div key={cat.category} className="file-tree-group">
+          <div key={cat.id} className="file-tree-group">
             <div
-              className={`file-tree-category ${isExpanded ? "expanded" : ""}`}
-              onClick={() => toggleExpand(cat.category)}
+              className={`file-tree-category ${isOpen ? "expanded" : ""}`}
+              onClick={() => toggleExpand(cat.id)}
+              role="button"
+              tabIndex={0}
+              aria-expanded={isOpen}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleExpand(cat.id);
+                }
+              }}
             >
               <div className="file-tree-category-left">
-                <div
-                  className={`checkbox ${
-                    state === "all"
-                      ? "checked"
-                      : state === "partial"
-                        ? "indeterminate"
-                        : ""
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleCategory(cat.category);
-                  }}
-                >
-                  {state === "all" && <Check size={12} />}
-                  {state === "partial" && <Minus size={12} />}
-                </div>
-
-                <ChevronRight
-                  size={16}
-                  className={`file-tree-chevron ${isExpanded ? "rotated" : ""}`}
+                <Checkbox
+                  checked={selectedCount === cat.files.length}
+                  indeterminate={selectedCount > 0 && selectedCount < cat.files.length}
+                  onChange={() => onToggleCategory(cat)}
+                  label={label}
                 />
-
-                <div className="result-row-icon">
-                  <FolderOpen size={18} />
-                </div>
-
+                <JunkIcon id={cat.id} />
                 <div className="result-row-info">
-                  <h4>{cat.category}</h4>
-                  <p>{cat.files.length} items</p>
+                  <h4>{label}</h4>
+                  <p>{t(`junk.${cat.id}Desc`)}</p>
                 </div>
               </div>
-
               <div className="file-tree-category-right">
-                <span className="result-size">
-                  {state === "none"
-                    ? formatBytes(cat.totalSize)
-                    : formatBytes(selectedSize)}
+                <span className="result-count">
+                  {t("common.itemsFound", { count: cat.files.length })}
                 </span>
+                <span className="result-size">
+                  {formatBytes(selectedCount > 0 ? selectedSize : cat.totalSize)}
+                </span>
+                <ChevronRight size={16} className={`file-tree-chevron ${isOpen ? "rotated" : ""}`} />
               </div>
             </div>
 
-            <div className={`file-tree-children ${isExpanded ? "open" : ""}`}>
+            <div className={`file-tree-children ${isOpen ? "open" : ""}`}>
               <div className="file-tree-children-inner">
-                {sortedFiles.map((file) => {
-                  const isSelected = selectedFiles.has(file.path);
-                  return (
-                    <div
-                      key={file.path}
-                      className={`file-tree-file ${isSelected ? "selected" : ""}`}
-                      onClick={() => onToggleFile(file.path)}
-                    >
-                      <div className="file-tree-file-left">
-                        <div
-                          className={`checkbox ${isSelected ? "checked" : ""}`}
-                        >
-                          {isSelected && <Check size={12} />}
+                {isOpen &&
+                  files.map((file) => {
+                    const isSelected = selected.has(file.path);
+                    return (
+                      <div
+                        key={file.path}
+                        className={`file-tree-file ${isSelected ? "selected" : ""}`}
+                        onClick={() => onToggleFile(file.path)}
+                      >
+                        <div className="file-tree-file-left">
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={() => onToggleFile(file.path)}
+                            label={file.name}
+                          />
+                          <div className="file-tree-file-info">
+                            <span className="file-tree-file-name">{file.name}</span>
+                            <span className="file-tree-path" title={file.path}>
+                              {shortenPath(file.path)}
+                            </span>
+                          </div>
                         </div>
-                        <File size={14} className="file-tree-file-icon" />
-                        <div className="file-tree-file-info">
-                          <span className="file-tree-file-name">
-                            {file.name}
-                          </span>
-                          <span className="file-tree-path">
-                            {shortenPath(file.path)}
-                          </span>
+                        <div className="file-tree-file-right">
+                          <button
+                            className="icon-btn"
+                            title={t("common.revealInFinder")}
+                            aria-label={t("common.revealInFinder")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void api.shell.revealInFinder(file.path);
+                            }}
+                          >
+                            <FolderSearch size={14} />
+                          </button>
+                          <span className="file-tree-file-size">{formatBytes(file.size)}</span>
                         </div>
                       </div>
-                      <span className="file-tree-file-size">
-                        {formatBytes(file.size)}
-                      </span>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             </div>
           </div>

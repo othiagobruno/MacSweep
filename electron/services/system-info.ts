@@ -1,310 +1,278 @@
-import * as os from "os";
-import { exec } from "child_process";
-import { promisify } from "util";
+import os from "node:os";
+import { tryRun } from "./exec";
+import type {
+  BatteryInfo,
+  CpuUsage,
+  DiskUsage,
+  KillResult,
+  MemoryUsage,
+  ProcessInfo,
+  SystemInfo,
+} from "../../shared/types";
 
-const execAsync = promisify(exec);
+/* ── CPU ───────────────────────────────────────────── */
 
-export interface CpuUsage {
+interface CpuTicks {
   user: number;
   system: number;
   idle: number;
   total: number;
 }
 
-export interface MemoryUsage {
-  total: number;
-  used: number;
-  free: number;
-  percentUsed: number;
+function readTicks(): CpuTicks {
+  let user = 0;
+  let system = 0;
+  let idle = 0;
+  let total = 0;
+  for (const cpu of os.cpus()) {
+    const t = cpu.times;
+    user += t.user + t.nice;
+    system += t.sys + t.irq;
+    idle += t.idle;
+    total += t.user + t.nice + t.sys + t.irq + t.idle;
+  }
+  return { user, system, idle, total };
 }
 
-export interface DiskUsage {
-  total: number;
-  used: number;
-  free: number;
-  percentUsed: number;
-  mount: string;
-}
+let previousTicks = readTicks();
 
+/** CPU usage since the previous call (sampled from kernel tick counters). */
 export async function getCpuUsage(): Promise<CpuUsage> {
-  try {
-    const { stdout } = await execAsync(`top -l 1 -n 0 | grep "CPU usage"`);
-    const match = stdout.match(
-      /(\d+\.?\d*)% user.*?(\d+\.?\d*)% sys.*?(\d+\.?\d*)% idle/,
-    );
-    if (match) {
-      const user = parseFloat(match[1]);
-      const system = parseFloat(match[2]);
-      const idle = parseFloat(match[3]);
-      return {
-        user,
-        system,
-        idle,
-        total: user + system,
-      };
-    }
-  } catch {
-    // fallback
+  let current = readTicks();
+  if (current.total - previousTicks.total <= 0) {
+    await new Promise((r) => setTimeout(r, 250));
+    current = readTicks();
   }
-
-  const cpus = os.cpus();
-  let totalUser = 0;
-  let totalSys = 0;
-  let totalIdle = 0;
-  for (const cpu of cpus) {
-    totalUser += cpu.times.user;
-    totalSys += cpu.times.sys;
-    totalIdle += cpu.times.idle;
-  }
-  const totalAll = totalUser + totalSys + totalIdle;
-  return {
-    user: (totalUser / totalAll) * 100,
-    system: (totalSys / totalAll) * 100,
-    idle: (totalIdle / totalAll) * 100,
-    total: ((totalUser + totalSys) / totalAll) * 100,
-  };
+  const dTotal = current.total - previousTicks.total || 1;
+  const user = ((current.user - previousTicks.user) / dTotal) * 100;
+  const system = ((current.system - previousTicks.system) / dTotal) * 100;
+  const idle = ((current.idle - previousTicks.idle) / dTotal) * 100;
+  previousTicks = current;
+  return { user, system, idle, total: Math.min(100, user + system) };
 }
 
-export function getMemoryUsage(): MemoryUsage {
-  const total = os.totalmem();
-  const free = os.freemem();
-  const used = total - free;
+/* ── Memory ────────────────────────────────────────── */
+
+export function parseVmStat(stdout: string): Record<string, number> {
+  const values: Record<string, number> = {};
+  const pageSize = stdout.match(/page size of (\d+) bytes/);
+  values.pageSize = pageSize ? parseInt(pageSize[1], 10) : 4096;
+  for (const line of stdout.split("\n")) {
+    const match = line.match(/^"?([^:"]+)"?:\s+(\d+)\.?$/);
+    if (match) values[match[1].trim()] = parseInt(match[2], 10);
+  }
+  return values;
+}
+
+/**
+ * Mirrors Activity Monitor: used = app memory + wired + compressed.
+ * os.freemem() on macOS only counts truly free pages, which makes memory
+ * always look ~100% used, so we read vm_stat instead.
+ */
+export function memoryFromVmStat(
+  vm: Record<string, number>,
+  total: number,
+  pressure: number,
+): MemoryUsage {
+  const page = vm.pageSize;
+  const anonymous = vm["Anonymous pages"] ?? vm["Pages active"] ?? 0;
+  const purgeable = vm["Pages purgeable"] ?? 0;
+  const app = Math.max(0, anonymous - purgeable) * page;
+  const wired = (vm["Pages wired down"] ?? 0) * page;
+  const compressed = (vm["Pages occupied by compressor"] ?? 0) * page;
+  const cached = ((vm["File-backed pages"] ?? 0) + purgeable) * page;
+  const used = Math.min(total, app + wired + compressed);
   return {
     total,
     used,
-    free,
+    free: total - used,
     percentUsed: (used / total) * 100,
+    app,
+    wired,
+    compressed,
+    cached,
+    pressure,
   };
 }
 
-export interface BatteryInfo {
-  cycleCount: number;
-  maxCapacity: number;
-  designCapacity: number;
-  currentCapacity: number;
-  percentCharge: number;
-  isCharging: boolean;
-  isFullyCharged: boolean;
-  condition: string;
-  temperature: number;
-  healthPercent: number;
+export async function getMemoryUsage(): Promise<MemoryUsage> {
+  const total = os.totalmem();
+  const [vmOut, levelOut] = await Promise.all([
+    tryRun("vm_stat"),
+    tryRun("sysctl", ["-n", "kern.memorystatus_level"]),
+  ]);
+  const level = levelOut ? parseInt(levelOut.trim(), 10) : NaN;
+  const pressure = Number.isFinite(level) ? 100 - level : 0;
+
+  if (vmOut) return memoryFromVmStat(parseVmStat(vmOut), total, pressure);
+
+  const free = os.freemem();
+  return {
+    total,
+    used: total - free,
+    free,
+    percentUsed: ((total - free) / total) * 100,
+    app: total - free,
+    wired: 0,
+    compressed: 0,
+    cached: 0,
+    pressure,
+  };
 }
 
-export async function getBatteryInfo(): Promise<BatteryInfo | null> {
-  try {
-    const { stdout } = await execAsync("ioreg -rc AppleSmartBattery");
-
-    const extract = (key: string): string | null => {
-      const regex = new RegExp(`"${key}"\\s*=\\s*(.+)`);
-      const match = stdout.match(regex);
-      return match ? match[1].trim() : null;
-    };
-
-    const cycleCount = parseInt(extract("CycleCount") || "0", 10);
-    const maxCapacity = parseInt(
-      extract("AppleRawMaxCapacity") || extract("MaxCapacity") || "0",
-      10,
-    );
-    const designCapacity = parseInt(extract("DesignCapacity") || "0", 10);
-    const currentCapacity = parseInt(
-      extract("AppleRawCurrentCapacity") || extract("CurrentCapacity") || "0",
-      10,
-    );
-    const isCharging = extract("IsCharging") === "Yes";
-    const isFullyCharged = extract("FullyCharged") === "Yes";
-    const temperature = parseInt(extract("Temperature") || "0", 10) / 100;
-
-    const percentCharge =
-      maxCapacity > 0 ? Math.round((currentCapacity / maxCapacity) * 100) : 0;
-
-    const healthPercent =
-      designCapacity > 0
-        ? Math.round((maxCapacity / designCapacity) * 100)
-        : 100;
-
-    let condition = "Normal";
-    if (healthPercent < 60) condition = "Replace Soon";
-    else if (healthPercent < 80) condition = "Fair";
-    else if (healthPercent >= 80) condition = "Normal";
-
-    return {
-      cycleCount,
-      maxCapacity,
-      designCapacity,
-      currentCapacity,
-      percentCharge,
-      isCharging,
-      isFullyCharged,
-      condition,
-      temperature,
-      healthPercent,
-    };
-  } catch {
-    return null;
-  }
-}
-
-export interface ProcessInfo {
-  pid: number;
-  name: string;
-  cpu: number;
-  memory: number;
-  memoryBytes: number;
-}
-
-export async function getTopProcesses(): Promise<ProcessInfo[]> {
-  try {
-    // Get top processes sorted by CPU usage — fetch more to filter system ones
-    const { stdout } = await execAsync(
-      "ps -Arco pid,pcpu,pmem,rss,comm | head -30",
-    );
-
-    const lines = stdout.trim().split("\n");
-    const processes: ProcessInfo[] = [];
-
-    // System / daemon processes to exclude
-    const SYSTEM_PROCESSES = new Set([
-      "kernel_task",
-      "WindowServer",
-      "launchd",
-      "loginwindow",
-      "hidd",
-      "UserEventAgent",
-      "distnoted",
-      "trustd",
-      "opendirectoryd",
-      "syslogd",
-      "mds",
-      "mds_stores",
-      "mdworker",
-      "mdworker_shared",
-      "cfprefsd",
-      "filecoordinationd",
-      "powerd",
-      "corebrightnessd",
-      "bluetoothd",
-      "airportd",
-      "coreaudiod",
-      "audioclocksyncd",
-      "displaypolicyd",
-      "thermalmonitord",
-      "systemstats",
-      "watchdogd",
-      "containermanagerd",
-      "symptomsd",
-      "coreservicesd",
-      "notifyd",
-      "logd",
-      "contextstored",
-      "lsd",
-      "pboard",
-      "iconservicesagent",
-      "securityd",
-      "taskgated",
-      "diskarbitrationd",
-      "fseventsd",
-      "configd",
-      "usermanagerd",
-      "revisiond",
-      "remoted",
-      "rapportd",
-      "mediaremoted",
-      "CommCenter",
-      "dasd",
-      "runningboardd",
-      "sharingd",
-      "ctkd",
-      "nsurlsessiond",
-      "cloudd",
-      "Electron",
-    ]);
-
-    // Skip header line
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].trim().split(/\s+/);
-      if (parts.length < 5) continue;
-
-      const pid = parseInt(parts[0], 10);
-      const cpu = parseFloat(parts[1]);
-      const mem = parseFloat(parts[2]);
-      const rssKb = parseInt(parts[3], 10);
-      const name = parts.slice(4).join(" ");
-
-      // Skip system processes
-      if (SYSTEM_PROCESSES.has(name)) continue;
-
-      processes.push({
-        pid,
-        name,
-        cpu,
-        memory: mem,
-        memoryBytes: rssKb * 1024,
-      });
-
-      if (processes.length >= 4) break;
-    }
-
-    return processes;
-  } catch {
-    return [];
-  }
-}
-
-export async function killProcess(
-  pid: number,
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    await execAsync(`kill -9 ${pid}`);
-    return { success: true };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { success: false, error: message };
-  }
-}
+/* ── Disk ──────────────────────────────────────────── */
 
 export async function getDiskUsage(): Promise<DiskUsage> {
-  try {
-    const { stdout } = await execAsync("diskutil info /");
-    const totalMatch = stdout.match(
-      /Container Total Space:\s+[\d.]+ \w+ \((\d+) Bytes\)/,
-    );
-    const freeMatch = stdout.match(
-      /Container Free Space:\s+[\d.]+ \w+ \((\d+) Bytes\)/,
-    );
-
-    if (totalMatch && freeMatch) {
-      const total = parseInt(totalMatch[1], 10);
-      const free = parseInt(freeMatch[1], 10);
-      const used = total - free;
-      return {
-        total,
-        used,
-        free,
-        percentUsed: (used / total) * 100,
-        mount: "/",
-      };
+  const info = await tryRun("diskutil", ["info", "/"]);
+  if (info) {
+    const total = info.match(/Container Total Space:\s+.*?\((\d+) Bytes\)/);
+    const free = info.match(/Container Free Space:\s+.*?\((\d+) Bytes\)/);
+    if (total && free) {
+      const t = parseInt(total[1], 10);
+      const f = parseInt(free[1], 10);
+      return { total: t, used: t - f, free: f, percentUsed: ((t - f) / t) * 100, mount: "/" };
     }
+  }
 
-    // Fallback to df if diskutil parsing fails
-    const { stdout: dfOut } = await execAsync("df -k / | tail -1");
-    const parts = dfOut.trim().split(/\s+/);
+  const df = await tryRun("df", ["-k", "/"]);
+  if (df) {
+    const parts = df.trim().split("\n").pop()!.split(/\s+/);
     const total = parseInt(parts[1], 10) * 1024;
-    const used = parseInt(parts[2], 10) * 1024;
     const free = parseInt(parts[3], 10) * 1024;
-    return {
-      total,
-      used,
-      free,
-      percentUsed: (used / total) * 100,
-      mount: "/",
-    };
-  } catch {
-    return {
-      total: 0,
-      used: 0,
-      free: 0,
-      percentUsed: 0,
-      mount: "/",
+    if (total > 0) {
+      return { total, used: total - free, free, percentUsed: ((total - free) / total) * 100, mount: "/" };
+    }
+  }
+  return { total: 0, used: 0, free: 0, percentUsed: 0, mount: "/" };
+}
+
+/* ── Battery ───────────────────────────────────────── */
+
+export async function getBatteryInfo(): Promise<BatteryInfo | null> {
+  const stdout = await tryRun("ioreg", ["-rc", "AppleSmartBattery"]);
+  if (!stdout || !stdout.includes("CycleCount")) return null;
+
+  const extract = (key: string): string | null => {
+    const match = stdout.match(new RegExp(`"${key}"\\s*=\\s*(.+)`));
+    return match ? match[1].trim() : null;
+  };
+  const num = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = parseInt(extract(key) ?? "", 10);
+      if (Number.isFinite(value)) return value;
+    }
+    return 0;
+  };
+
+  const cycleCount = num("CycleCount");
+  const maxCapacity = num("AppleRawMaxCapacity", "MaxCapacity");
+  const designCapacity = num("DesignCapacity");
+  const currentCapacity = num("AppleRawCurrentCapacity", "CurrentCapacity");
+  // "CurrentCapacity" is already a percentage on Apple Silicon.
+  const reportedPct = num("CurrentCapacity");
+  const percentCharge =
+    reportedPct > 0 && reportedPct <= 100
+      ? reportedPct
+      : maxCapacity > 0
+        ? Math.round((currentCapacity / maxCapacity) * 100)
+        : 0;
+  const healthPercent =
+    designCapacity > 0
+      ? Math.min(100, Math.round((maxCapacity / designCapacity) * 100))
+      : 100;
+
+  return {
+    cycleCount,
+    maxCapacity,
+    designCapacity,
+    currentCapacity,
+    percentCharge,
+    isCharging: extract("IsCharging") === "Yes",
+    isFullyCharged: extract("FullyCharged") === "Yes",
+    condition:
+      healthPercent < 60 ? "replaceSoon" : healthPercent < 80 ? "fair" : "normal",
+    temperature: num("Temperature") / 100,
+    healthPercent,
+  };
+}
+
+/* ── Processes ─────────────────────────────────────── */
+
+const SYSTEM_PROCESSES = new Set([
+  "kernel_task", "WindowServer", "launchd", "loginwindow", "hidd",
+  "UserEventAgent", "distnoted", "trustd", "opendirectoryd", "syslogd",
+  "mds", "mds_stores", "mdworker", "mdworker_shared", "cfprefsd",
+  "filecoordinationd", "powerd", "corebrightnessd", "bluetoothd",
+  "airportd", "coreaudiod", "audioclocksyncd", "displaypolicyd",
+  "thermalmonitord", "systemstats", "watchdogd", "containermanagerd",
+  "symptomsd", "coreservicesd", "notifyd", "logd", "contextstored", "lsd",
+  "pboard", "iconservicesagent", "securityd", "taskgated",
+  "diskarbitrationd", "fseventsd", "configd", "usermanagerd", "revisiond",
+  "remoted", "rapportd", "mediaremoted", "CommCenter", "dasd",
+  "runningboardd", "sharingd", "ctkd", "nsurlsessiond", "cloudd", "ps",
+]);
+
+export async function getTopProcesses(limit = 5): Promise<ProcessInfo[]> {
+  const stdout = await tryRun("ps", ["-Arco", "pid,pcpu,pmem,rss,comm"]);
+  if (!stdout) return [];
+  const max = Math.min(50, Math.max(1, Math.round(limit)));
+  const processes: ProcessInfo[] = [];
+
+  for (const line of stdout.trim().split("\n").slice(1)) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 5) continue;
+    const pid = parseInt(parts[0], 10);
+    const name = parts.slice(4).join(" ");
+    if (pid === process.pid || SYSTEM_PROCESSES.has(name)) continue;
+    processes.push({
+      pid,
+      name,
+      cpu: parseFloat(parts[1]),
+      memory: parseFloat(parts[2]),
+      memoryBytes: parseInt(parts[3], 10) * 1024,
+    });
+    if (processes.length >= max) break;
+  }
+  return processes;
+}
+
+export async function killProcess(pid: unknown): Promise<KillResult> {
+  if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 1) {
+    return { success: false, error: "Invalid process id" };
+  }
+  if (pid === process.pid || pid === process.ppid) {
+    return { success: false, error: "Refusing to terminate MacSweep" };
+  }
+  try {
+    process.kill(pid, "SIGTERM");
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: (err as Error).message };
+  }
+}
+
+/* ── System info ───────────────────────────────────── */
+
+let cachedInfo: Omit<SystemInfo, "uptime"> | null = null;
+
+export async function getSystemInfo(): Promise<SystemInfo> {
+  if (!cachedInfo) {
+    const [model, productVersion, buildVersion] = await Promise.all([
+      tryRun("sysctl", ["-n", "hw.model"]),
+      tryRun("sw_vers", ["-productVersion"]),
+      tryRun("sw_vers", ["-buildVersion"]),
+    ]);
+    const cpus = os.cpus();
+    cachedInfo = {
+      model: model?.trim() || "Mac",
+      chip: cpus[0]?.model.trim() || os.arch(),
+      osVersion: productVersion
+        ? `macOS ${productVersion.trim()} (${buildVersion?.trim() ?? ""})`
+        : `${os.type()} ${os.release()}`,
+      hostname: os.hostname().replace(/\.local$/, ""),
+      cores: cpus.length,
+      totalMemory: os.totalmem(),
     };
   }
+  return { ...cachedInfo, uptime: os.uptime() };
 }

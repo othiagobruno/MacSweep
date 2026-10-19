@@ -1,482 +1,427 @@
+import { useEffect, useMemo, useState } from "react";
 import {
-  Zap,
-  Shield,
-  Gauge,
-  Trash2,
   CheckCircle2,
+  HardDrive,
+  MemoryStick,
+  Power,
+  RotateCcw,
   Sparkles,
-  Check,
+  Trash2,
+  Zap,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ActionNotice } from "../components/action-notice";
+import { Checkbox } from "../components/checkbox";
 import { ConfirmDialog } from "../components/confirm-dialog";
-import { ScanningOrb, ScanningLines, PulseLoader } from "../components/loaders";
-import { formatBytes } from "../utils";
-import { useAppState } from "../contexts/app-state-context";
-import { useState } from "react";
-import type { SystemJunkResult } from "../types";
+import { FullDiskAccessNotice } from "../components/full-disk-access-notice";
+import { JunkIcon } from "../components/junk-meta";
+import { PulseLoader, ScanningLines, ScanningOrb } from "../components/loaders";
+import { PageHeader, ScanHero } from "../components/page";
+import { useToast } from "../components/toast";
+import { useNavigation } from "../contexts/navigation-context";
+import { useCleaner } from "../hooks/use-cleaner";
+import { api } from "../lib/api";
+import { formatBytes, formatRelative, sumBy } from "../utils";
+import type {
+  AppStats,
+  DiskUsage,
+  JunkCategoryId,
+  MemoryUsage,
+  SystemJunkResult,
+} from "../types";
+
+type Phase = "idle" | "scanning" | "results" | "cleaned";
+
+interface Health {
+  memory: MemoryUsage | null;
+  disk: DiskUsage | null;
+  startupEnabled: number | null;
+}
 
 export function SmartScan() {
-  const { t } = useTranslation();
-  const {
-    smartScan: {
-      scanState,
-      setScanState,
-      progress,
-      setProgress,
-      scanStatus,
-      setScanStatus,
-      results,
-      setResults,
-      isCleaning,
-      setIsCleaning,
-      cleaned,
-      setCleaned,
-    },
-  } = useAppState();
+  const { t, i18n } = useTranslation();
+  const { navigate } = useNavigation();
+  const toast = useToast();
+  const { clean, isCleaning, dialog } = useCleaner();
 
-  const [showCleanConfirm, setShowCleanConfirm] = useState(false);
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
-    new Set(),
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [progress, setProgress] = useState(0);
+  const [currentCategory, setCurrentCategory] = useState<JunkCategoryId | null>(
+    null,
   );
-  const [feedback, setFeedback] = useState<{
-    tone: "success" | "warning" | "error";
-    message: string;
-  } | null>(null);
+  const [junk, setJunk] = useState<SystemJunkResult[]>([]);
+  const [selected, setSelected] = useState<Set<JunkCategoryId>>(new Set());
+  const [health, setHealth] = useState<Health>({
+    memory: null,
+    disk: null,
+    startupEnabled: null,
+  });
+  const [freed, setFreed] = useState(0);
+  const [stats, setStats] = useState<AppStats | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
-  async function scanSystemJunkResults() {
-    if (window.electronAPI) {
-      const junkResults = await window.electronAPI.scan.systemJunk();
-      return junkResults.filter((category) => category.files.length > 0);
-    }
+  useEffect(() => {
+    void api.app.stats().then(setStats);
+    return api.app.onStatsChanged(setStats);
+  }, []);
 
-    return getMockJunkData();
-  }
-
-  function toggleCategory(category: string) {
-    setSelectedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(category)) {
-        next.delete(category);
-      } else {
-        next.add(category);
-      }
-      return next;
-    });
-  }
-
-  function toggleAll() {
-    if (!results) return;
-    if (selectedCategories.size === results.junk.length) {
-      setSelectedCategories(new Set());
-    } else {
-      setSelectedCategories(new Set(results.junk.map((cat) => cat.category)));
-    }
-  }
+  const cleanable = junk.filter((c) => c.files.length > 0);
+  const accessDenied = junk.some((c) => c.accessDenied);
+  const selectedCats = cleanable.filter((c) => selected.has(c.id));
+  const selectedSize = sumBy(selectedCats, (c) => c.totalSize);
+  const totalSize = sumBy(cleanable, (c) => c.totalSize);
 
   async function handleScan() {
-    setScanState("scanning");
+    setPhase("scanning");
     setProgress(0);
-    setCleaned(false);
-    setFeedback(null);
+    setCurrentCategory(null);
+    const off = api.scan.onProgress((p) => {
+      setProgress(p.progress);
+      setCurrentCategory(p.categoryId ?? null);
+    });
 
-    const steps = [
-      { label: t("smartScan.analyzingJunk"), target: 30 },
-      { label: t("smartScan.checkingPerformance"), target: 60 },
-      { label: t("smartScan.scanningThreats"), target: 85 },
-      { label: t("smartScan.generatingReport"), target: 100 },
-    ];
-
-    let junkResults: SystemJunkResult[] = [];
-
-    for (let i = 0; i < steps.length; i++) {
-      setScanStatus(steps[i].label);
-
-      if (i === 0 && window.electronAPI) {
-        try {
-          junkResults = await scanSystemJunkResults();
-        } catch {
-          junkResults = getMockJunkData();
-        }
-      } else if (i === 0) {
-        junkResults = getMockJunkData();
-      }
-
-      await animateProgress(progress, steps[i].target, 800);
-      setProgress(steps[i].target);
-    }
-
-    const totalJunk = junkResults.reduce(
-      (sum, cat) =>
-        sum + cat.files.reduce((catSum, file) => catSum + file.size, 0),
-      0,
-    );
-    setResults({ junk: junkResults, totalJunk });
-    setSelectedCategories(new Set(junkResults.map((cat) => cat.category)));
-    setCleaned(junkResults.length === 0);
-    setScanState("done");
-    setScanStatus("");
-  }
-
-  async function animateProgress(from: number, to: number, duration: number) {
-    const steps = 20;
-    const increment = (to - from) / steps;
-    const delay = duration / steps;
-    for (let i = 0; i < steps; i++) {
-      await new Promise((r) => setTimeout(r, delay));
-      setProgress((prev) => Math.min(prev + increment, to));
+    try {
+      const [junkResults, memory, disk, startup] = await Promise.all([
+        api.scan.systemJunk(),
+        api.system.memoryUsage().catch(() => null),
+        api.system.diskUsage().catch(() => null),
+        api.scan.startupItems().catch(() => null),
+      ]);
+      setJunk(junkResults);
+      setSelected(
+        new Set(junkResults.filter((c) => c.defaultSelected).map((c) => c.id)),
+      );
+      setHealth({
+        memory,
+        disk,
+        startupEnabled: startup
+          ? startup.filter((i) => i.isEnabled).length
+          : null,
+      });
+      setProgress(100);
+      setPhase("results");
+    } catch {
+      toast.show({ tone: "error", title: t("errors.scanFailed") });
+      setPhase("idle");
+    } finally {
+      off();
     }
   }
 
   async function handleClean() {
-    setShowCleanConfirm(false);
-    setIsCleaning(true);
-    setCleaned(false);
-    setFeedback(null);
-
-    if (results && window.electronAPI) {
-      const selectedNames = Array.from(selectedCategories);
-      const selectedJunk = results.junk.filter((cat) =>
-        selectedCategories.has(cat.category),
-      );
-      const allPaths = selectedJunk.flatMap((cat) =>
-        cat.files.map((f) => f.path),
-      );
-      try {
-        const result = await window.electronAPI.clean.files(allPaths);
-
-        if (result.failedPaths.length > 0) {
-          await window.electronAPI.shell.forceDelete(result.failedPaths);
-        }
-
-        const refreshedJunk = await scanSystemJunkResults();
-        const refreshedSelected = selectedNames.filter((category) =>
-          refreshedJunk.some((item) => item.category === category),
-        );
-
-        setResults({
-          junk: refreshedJunk,
-          totalJunk: refreshedJunk.reduce(
-            (sum, cat) =>
-              sum + cat.files.reduce((catSum, file) => catSum + file.size, 0),
-            0,
-          ),
-        });
-        setSelectedCategories(new Set(refreshedSelected));
-        setCleaned(refreshedJunk.length === 0);
-        window.dispatchEvent(new Event("macsweep:disk-usage-refresh"));
-
-        if (refreshedSelected.length === 0) {
-          setFeedback({
-            tone: "success",
-            message:
-              refreshedJunk.length === 0
-                ? t("smartScan.cleanSuccess")
-                : t("smartScan.cleanSuccessWithRemaining"),
-          });
-        } else if (refreshedSelected.length < selectedNames.length) {
-          setFeedback({
-            tone: "warning",
-            message: t("smartScan.cleanPartial"),
-          });
-        } else {
-          setFeedback({
-            tone: "error",
-            message: t("smartScan.cleanFailed"),
-          });
-        }
-      } catch {
-        setFeedback({
-          tone: "error",
-          message: t("smartScan.cleanFailed"),
-        });
-      }
-    } else if (results) {
-      const nextJunk = results.junk.filter(
-        (cat) => !selectedCategories.has(cat.category),
-      );
-      setResults({
-        junk: nextJunk,
-        totalJunk: nextJunk.reduce(
-          (sum, cat) =>
-            sum + cat.files.reduce((catSum, file) => catSum + file.size, 0),
-          0,
-        ),
-      });
-      setSelectedCategories(new Set());
-      setCleaned(nextJunk.length === 0);
-      setFeedback({
-        tone: "success",
-        message:
-          nextJunk.length === 0
-            ? t("smartScan.cleanSuccess")
-            : t("smartScan.cleanSuccessWithRemaining"),
-      });
+    setShowConfirm(false);
+    const paths = selectedCats.flatMap((c) => c.files.map((f) => f.path));
+    const outcome = await clean(paths);
+    setFreed(outcome.freed);
+    if (outcome.failed.length > 0) {
+      toast.show({ tone: "warning", title: t("smartScan.partialClean") });
     }
-
-    setIsCleaning(false);
+    setPhase("cleaned");
   }
 
-  const selectedTotal = results
-    ? results.junk
-        .filter((cat) => selectedCategories.has(cat.category))
-        .reduce(
-          (sum, cat) =>
-            sum + cat.files.reduce((catSum, file) => catSum + file.size, 0),
-          0,
-        )
-    : 0;
+  function toggle(id: JunkCategoryId) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const allSelected =
+    cleanable.length > 0 && selected.size === cleanable.length;
+
+  const heroFooter = useMemo(() => {
+    if (!stats) return null;
+    const last = formatRelative(stats.lastScanAt, i18n.language);
+    return (
+      <div className="hero-stats">
+        <span>
+          {last
+            ? t("smartScan.lastScan", { when: last })
+            : t("smartScan.neverScanned")}
+        </span>
+        {stats.totalFreed > 0 && (
+          <>
+            <span className="hero-stats-dot" />
+            <span>
+              {t("smartScan.lifetimeFreed", {
+                size: formatBytes(stats.totalFreed),
+              })}
+            </span>
+          </>
+        )}
+      </div>
+    );
+  }, [stats, t, i18n.language]);
 
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <div className="page-header">
-          <h1 className="page-title">{t("smartScan.title")}</h1>
-          <p className="page-subtitle">{t("smartScan.subtitle")}</p>
-        </div>
+        <PageHeader
+          title={t("smartScan.title")}
+          subtitle={t("smartScan.subtitle")}
+        />
 
-        {feedback && (
-          <ActionNotice tone={feedback.tone} message={feedback.message} />
+        {phase === "idle" && (
+          <ScanHero
+            icon={<Zap size={40} />}
+            label={t("common.scan")}
+            hint={t("smartScan.clickToStart")}
+            onScan={handleScan}
+            footer={heroFooter}
+          />
         )}
 
-        <div className="scan-container">
-          {scanState === "idle" && (
-            <div className="fade-in">
-              <div className="scan-circle-wrapper">
-                <div className="scan-circle-bg" />
-                <button className="scan-btn" onClick={handleScan}>
-                  <Zap size={40} />
-                  {t("common.scan")}
-                </button>
-              </div>
-              <p className="scan-status">{t("smartScan.clickToStart")}</p>
+        {phase === "scanning" && (
+          <div className="scan-container fade-in">
+            <ScanningOrb progress={progress} />
+            <p className="scan-status">
+              {currentCategory
+                ? t("smartScan.scanningCategory", {
+                    category: t(`junk.${currentCategory}`),
+                  })
+                : t("smartScan.finishing")}
+            </p>
+            <ScanningLines />
+          </div>
+        )}
+
+        {phase === "cleaned" && (
+          <div className="scan-container fade-in">
+            <div className="success-burst">
+              <CheckCircle2 size={72} />
             </div>
-          )}
+            <h2 className="success-title">
+              {freed > 0
+                ? t("smartScan.freedTitle", { size: formatBytes(freed) })
+                : t("smartScan.yourMacIsClean")}
+            </h2>
+            <p className="scan-status">{t("smartScan.freedMessage")}</p>
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: 24 }}
+              onClick={handleScan}
+            >
+              <RotateCcw size={16} />
+              {t("common.scanAgain")}
+            </button>
+          </div>
+        )}
 
-          {scanState === "scanning" && (
-            <div className="fade-in">
-              <ScanningOrb progress={progress} />
-              <p className="scan-status">{scanStatus}</p>
-              <ScanningLines />
+        {phase === "results" && (
+          <div className="fade-in">
+            <div className="summary-cards summary-cards-4">
+              <SummaryCard
+                icon={<Trash2 size={20} />}
+                color="var(--warning)"
+                value={formatBytes(totalSize)}
+                label={t("smartScan.cleanable")}
+              />
+              <SummaryCard
+                icon={<MemoryStick size={20} />}
+                color="var(--success)"
+                value={
+                  health.memory
+                    ? `${Math.round(health.memory.percentUsed)}%`
+                    : "—"
+                }
+                label={t("smartScan.memory")}
+                detail={
+                  health.memory
+                    ? t("smartScan.memoryPressure", {
+                        value: Math.round(health.memory.pressure),
+                      })
+                    : undefined
+                }
+                onClick={() => navigate("performance")}
+              />
+              <SummaryCard
+                icon={<HardDrive size={20} />}
+                color="var(--info)"
+                value={
+                  health.disk ? `${Math.round(health.disk.percentUsed)}%` : "—"
+                }
+                label={t("smartScan.disk")}
+                detail={
+                  health.disk
+                    ? t("smartScan.diskFree", {
+                        size: formatBytes(health.disk.free),
+                      })
+                    : undefined
+                }
+                onClick={() => navigate("large-files")}
+              />
+              <SummaryCard
+                icon={<Power size={20} />}
+                color="var(--accent-secondary)"
+                value={
+                  health.startupEnabled !== null
+                    ? String(health.startupEnabled)
+                    : "—"
+                }
+                label={t("smartScan.startup")}
+                detail={t("smartScan.review")}
+                onClick={() => navigate("startup-items")}
+              />
             </div>
-          )}
 
-          {scanState === "done" && results && (
-            <div className="fade-in" style={{ width: "100%" }}>
-              <div className="summary-cards">
-                <div className="summary-card">
-                  <div
-                    className="summary-card-icon"
-                    style={{
-                      background: "rgba(253, 203, 110, 0.15)",
-                      color: "var(--warning)",
-                    }}
-                  >
-                    <Trash2 size={22} />
-                  </div>
-                  <div className="summary-card-value">
-                    {formatBytes(results.totalJunk)}
-                  </div>
-                  <div className="summary-card-label">
-                    {t("smartScan.systemJunk")}
-                  </div>
-                </div>
+            {accessDenied && <FullDiskAccessNotice />}
 
-                <div className="summary-card">
-                  <div
-                    className="summary-card-icon"
-                    style={{
-                      background: "rgba(0, 210, 160, 0.15)",
-                      color: "var(--success)",
-                    }}
-                  >
-                    <Shield size={22} />
-                  </div>
-                  <div className="summary-card-value">
-                    {t("smartScan.noThreats")}
-                  </div>
-                  <div className="summary-card-label">
-                    {t("smartScan.malwareScan")}
-                  </div>
-                </div>
-
-                <div className="summary-card">
-                  <div
-                    className="summary-card-icon"
-                    style={{
-                      background: "rgba(116, 185, 255, 0.15)",
-                      color: "var(--info)",
-                    }}
-                  >
-                    <Gauge size={22} />
-                  </div>
-                  <div className="summary-card-value">
-                    {t("smartScan.good")}
-                  </div>
-                  <div className="summary-card-label">
-                    {t("smartScan.performanceLabel")}
-                  </div>
-                </div>
+            {cleanable.length === 0 ? (
+              <div className="scan-container" style={{ minHeight: 200 }}>
+                <CheckCircle2 size={48} style={{ color: "var(--success)" }} />
+                <h3 style={{ marginTop: 12 }}>
+                  {t("smartScan.yourMacIsClean")}
+                </h3>
+                <p className="scan-status">{t("smartScan.nothingFound")}</p>
               </div>
+            ) : (
+              <>
+                <div className="results-header">
+                  <button
+                    className="btn btn-sm btn-secondary"
+                    onClick={() =>
+                      setSelected(
+                        allSelected
+                          ? new Set()
+                          : new Set(cleanable.map((c) => c.id)),
+                      )
+                    }
+                  >
+                    {allSelected
+                      ? t("common.deselectAll")
+                      : t("common.selectAll")}
+                  </button>
+                  <span className="results-selected-info">
+                    {t("smartScan.selectedInfo", {
+                      selected: selectedCats.length,
+                      total: cleanable.length,
+                      size: formatBytes(selectedSize),
+                    })}
+                  </span>
+                </div>
 
-              <div className="results-header">
-                <button
-                  className="btn btn-sm btn-secondary"
-                  onClick={toggleAll}
-                >
-                  {selectedCategories.size === results.junk.length
-                    ? t("common.deselectAll")
-                    : t("common.selectAll")}
-                </button>
-                <span className="results-selected-info">
-                  {t("smartScan.selectedInfo", {
-                    selected: selectedCategories.size,
-                    total: results.junk.length,
-                    size: formatBytes(selectedTotal),
-                  })}
-                </span>
-              </div>
-
-              <div className="results-container">
-                {[...results.junk]
-                  .sort(
-                    (a, b) =>
-                      b.files.reduce((sum, file) => sum + file.size, 0) -
-                      a.files.reduce((sum, file) => sum + file.size, 0),
-                  )
-                  .map((cat) => {
-                    const isSelected = selectedCategories.has(cat.category);
-                    const categorySize = cat.files.reduce(
-                      (sum, file) => sum + file.size,
-                      0,
-                    );
+                <div className="results-container">
+                  {cleanable.map((cat) => {
+                    const isSelected = selected.has(cat.id);
                     return (
                       <div
-                        key={cat.category}
+                        key={cat.id}
                         className={`result-row selectable ${isSelected ? "selected" : ""}`}
-                        onClick={() => toggleCategory(cat.category)}
+                        onClick={() => toggle(cat.id)}
                       >
                         <div className="result-row-left">
-                          <div
-                            className={`checkbox ${isSelected ? "checked" : ""}`}
-                          >
-                            {isSelected && <Check size={12} />}
-                          </div>
-                          <div className="result-row-icon">
-                            <Trash2 size={18} />
-                          </div>
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={() => toggle(cat.id)}
+                            label={t(`junk.${cat.id}`)}
+                          />
+                          <JunkIcon id={cat.id} />
                           <div className="result-row-info">
-                            <h4>{cat.category}</h4>
-                            <p>
-                              {t("common.itemsFound", {
-                                count: cat.files.length,
-                              })}
-                            </p>
+                            <h4>{t(`junk.${cat.id}`)}</h4>
+                            <p>{t(`junk.${cat.id}Desc`)}</p>
                           </div>
                         </div>
                         <div className="result-row-right">
+                          <span className="result-count">
+                            {t("common.itemsFound", {
+                              count: cat.files.length,
+                            })}
+                          </span>
                           <span className="result-size">
-                            {formatBytes(categorySize)}
+                            {formatBytes(cat.totalSize)}
                           </span>
                         </div>
                       </div>
                     );
                   })}
-              </div>
-            </div>
-          )}
-        </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
-      {scanState === "done" && results && (
+      {phase === "results" && cleanable.length > 0 && (
         <div className="page-actions-bar">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {cleaned ? (
-              <div
-                className="fade-in"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  color: "var(--success)",
-                  fontSize: 16,
-                  fontWeight: 600,
-                }}
-              >
-                <CheckCircle2 size={22} />
-                {t("smartScan.yourMacIsClean")}
-              </div>
-            ) : (
-              <button
-                className="btn btn-primary btn-lg"
-                onClick={() => setShowCleanConfirm(true)}
-                disabled={isCleaning || selectedCategories.size === 0}
-              >
-                {isCleaning ? (
-                  <PulseLoader label={t("common.cleaning")} size="sm" />
-                ) : (
-                  <>
-                    <Sparkles size={20} />
-                    {t("smartScan.cleanSize", {
-                      size: formatBytes(selectedTotal),
-                    })}
-                  </>
-                )}
-              </button>
-            )}
+          <div className="toolbar toolbar-center">
+            <button
+              className="btn btn-ghost"
+              onClick={handleScan}
+              disabled={isCleaning}
+            >
+              <RotateCcw size={16} />
+              {t("common.rescan")}
+            </button>
+            <button
+              className="btn btn-primary btn-lg"
+              onClick={() => setShowConfirm(true)}
+              disabled={isCleaning || selectedCats.length === 0}
+            >
+              {isCleaning ? (
+                <PulseLoader label={t("common.cleaning")} size="sm" />
+              ) : (
+                <>
+                  <Sparkles size={20} />
+                  {t("smartScan.cleanSize", {
+                    size: formatBytes(selectedSize),
+                  })}
+                </>
+              )}
+            </button>
           </div>
         </div>
       )}
 
       <ConfirmDialog
-        isOpen={showCleanConfirm}
+        isOpen={showConfirm}
         title={t("smartScan.confirmTitle")}
         message={t("smartScan.confirmMessage", {
-          size: formatBytes(selectedTotal),
-          count: selectedCategories.size,
+          size: formatBytes(selectedSize),
+          count: selectedCats.length,
         })}
         confirmLabel={t("common.clean")}
-        variant="warning"
         onConfirm={handleClean}
-        onCancel={() => setShowCleanConfirm(false)}
+        onCancel={() => setShowConfirm(false)}
       />
+      {dialog}
     </div>
   );
 }
 
-function getMockJunkData(): SystemJunkResult[] {
-  return [
-    {
-      category: "User Cache",
-      files: [{ path: "/cache/1", size: 524288000, name: "cache1" }],
-      totalSize: 2.1 * 1024 * 1024 * 1024,
-    },
-    {
-      category: "System Logs",
-      files: [{ path: "/logs/1", size: 104857600, name: "log1" }],
-      totalSize: 450 * 1024 * 1024,
-    },
-    {
-      category: "Temporary Files",
-      files: [{ path: "/tmp/1", size: 209715200, name: "tmp1" }],
-      totalSize: 820 * 1024 * 1024,
-    },
-    {
-      category: "Old Downloads",
-      files: [
-        {
-          path: "/downloads/1",
-          size: 314572800,
-          name: "old1",
-        },
-      ],
-      totalSize: 1.5 * 1024 * 1024 * 1024,
-    },
-  ];
+function SummaryCard({
+  icon,
+  color,
+  value,
+  label,
+  detail,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  color: string;
+  value: string;
+  label: string;
+  detail?: string;
+  onClick?: () => void;
+}) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag
+      className={`summary-card ${onClick ? "clickable" : ""}`}
+      onClick={onClick}
+    >
+      <div
+        className="summary-card-icon"
+        style={{
+          color,
+          background: `color-mix(in srgb, ${color} 15%, transparent)`,
+        }}
+      >
+        {icon}
+      </div>
+      <div className="summary-card-value">{value}</div>
+      <div className="summary-card-label">{label}</div>
+      {detail && <div className="summary-card-detail">{detail}</div>}
+    </Tag>
+  );
 }

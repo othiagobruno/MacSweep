@@ -1,18 +1,24 @@
 import {
   Tray,
   BrowserWindow,
+  Menu,
   nativeImage,
   ipcMain,
   app,
   screen,
 } from "electron";
 import path from "node:path";
+import type { Page } from "../shared/types";
 
 let tray: Tray | null = null;
 let trayWindow: BrowserWindow | null = null;
 
 const TRAY_WINDOW_WIDTH = 340;
-const TRAY_WINDOW_HEIGHT = 960;
+const TRAY_DEFAULT_HEIGHT = 560;
+
+interface TrayOptions {
+  openMainWindow: (page?: Page) => void;
+}
 
 /**
  * Create a 16x16 template icon using nativeImage.
@@ -22,7 +28,6 @@ function createTrayIcon(): Electron.NativeImage {
   const size = 16;
   const buf = Buffer.alloc(size * size * 4, 0);
 
-  // Simple circle arc + needle drawn pixel-by-pixel
   const cx = 7.5;
   const cy = 8.5;
   const R = 5.5;
@@ -37,10 +42,7 @@ function createTrayIcon(): Electron.NativeImage {
 
       // Arc
       if (d >= 4 && d <= 7 && ang >= -10 && ang <= 190) {
-        a = Math.max(
-          a,
-          Math.round(255 * Math.max(0, 1 - Math.abs(d - R) / 1.3)),
-        );
+        a = Math.max(a, Math.round(255 * Math.max(0, 1 - Math.abs(d - R) / 1.3)));
       }
 
       // Needle at ~50 degrees
@@ -59,17 +61,11 @@ function createTrayIcon(): Electron.NativeImage {
       }
 
       const i = (y * size + x) * 4;
-      buf[i] = 0;
-      buf[i + 1] = 0;
-      buf[i + 2] = 0;
       buf[i + 3] = Math.min(255, a);
     }
   }
 
-  const img = nativeImage.createFromBuffer(buf, {
-    width: size,
-    height: size,
-  });
+  const img = nativeImage.createFromBuffer(buf, { width: size, height: size });
   img.setTemplateImage(true);
   return img;
 }
@@ -77,7 +73,7 @@ function createTrayIcon(): Electron.NativeImage {
 function createTrayWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: TRAY_WINDOW_WIDTH,
-    height: TRAY_WINDOW_HEIGHT,
+    height: TRAY_DEFAULT_HEIGHT,
     show: false,
     frame: false,
     resizable: false,
@@ -93,55 +89,62 @@ function createTrayWindow(): BrowserWindow {
       preload: path.join(__dirname, "tray-preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
     },
   });
 
-  win.setVisibleOnAllWorkspaces(true);
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
   if (VITE_DEV_SERVER_URL) {
-    win.loadURL(`${VITE_DEV_SERVER_URL}/tray.html`);
+    void win.loadURL(`${VITE_DEV_SERVER_URL}/tray.html`);
   } else {
-    win.loadFile(path.join(process.env.DIST!, "tray.html"));
+    void win.loadFile(path.join(process.env.DIST!, "tray.html"));
   }
 
-  win.on("blur", () => {
-    win.hide();
-  });
-
+  win.on("blur", () => win.hide());
   return win;
 }
 
 function showTrayWindow(trayBounds: Electron.Rectangle) {
   if (!trayWindow) return;
 
-  const display = screen.getDisplayNearestPoint({
-    x: trayBounds.x,
-    y: trayBounds.y,
-  });
-
-  const x = Math.round(
-    trayBounds.x + trayBounds.width / 2 - TRAY_WINDOW_WIDTH / 2,
-  );
+  const display = screen.getDisplayNearestPoint({ x: trayBounds.x, y: trayBounds.y });
+  const x = Math.round(trayBounds.x + trayBounds.width / 2 - TRAY_WINDOW_WIDTH / 2);
   const y = Math.round(trayBounds.y + trayBounds.height + 4);
-
-  // Make sure it stays within screen bounds
-  const maxX = display.bounds.x + display.bounds.width - TRAY_WINDOW_WIDTH;
-  const clampedX = Math.min(Math.max(x, display.bounds.x), maxX);
+  const maxX = display.workArea.x + display.workArea.width - TRAY_WINDOW_WIDTH;
+  const clampedX = Math.min(Math.max(x, display.workArea.x), maxX);
 
   trayWindow.setPosition(clampedX, y);
   trayWindow.show();
   trayWindow.focus();
+  trayWindow.webContents.send("tray:show");
 }
 
-export function createTray(mainWindow: BrowserWindow | null) {
-  // Avoid creating duplicate tray icons
+function registerTrayIpc(options: TrayOptions) {
+  ipcMain.removeHandler("tray:openMainWindow");
+  ipcMain.removeHandler("tray:quit");
+  ipcMain.removeHandler("tray:resize");
+
+  ipcMain.handle("tray:openMainWindow", (_event, page?: Page) => {
+    trayWindow?.hide();
+    options.openMainWindow(page);
+  });
+  ipcMain.handle("tray:quit", () => app.quit());
+  ipcMain.handle("tray:resize", (_event, height: unknown) => {
+    if (!trayWindow || typeof height !== "number" || !Number.isFinite(height)) return;
+    const display = screen.getDisplayMatching(trayWindow.getBounds());
+    const max = display.workArea.height - 16;
+    const next = Math.min(max, Math.max(200, Math.ceil(height)));
+    trayWindow.setSize(TRAY_WINDOW_WIDTH, next);
+  });
+}
+
+export function createTray(options: TrayOptions) {
   if (tray) return;
 
-  const icon = createTrayIcon();
-  tray = new Tray(icon);
+  tray = new Tray(createTrayIcon());
   tray.setToolTip("MacSweep");
-
   trayWindow = createTrayWindow();
 
   tray.on("click", (_event, bounds) => {
@@ -152,27 +155,24 @@ export function createTray(mainWindow: BrowserWindow | null) {
     }
   });
 
-  // Remove any previously registered handlers to avoid duplicates
-  ipcMain.removeHandler("tray:openMainWindow");
-  ipcMain.removeHandler("tray:quit");
-
-  // IPC: open main window
-  ipcMain.handle("tray:openMainWindow", () => {
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
+  tray.on("right-click", () => {
+    tray?.popUpContextMenu(
+      Menu.buildFromTemplate([
+        { label: "Open MacSweep", click: () => options.openMainWindow() },
+        { label: "Smart Scan", click: () => options.openMainWindow("smart-scan") },
+        { type: "separator" },
+        { label: "Quit MacSweep", role: "quit" },
+      ]),
+    );
   });
 
-  // IPC: quit app
-  ipcMain.handle("tray:quit", () => {
-    app.quit();
-  });
+  registerTrayIpc(options);
 }
 
 export function destroyTray() {
   ipcMain.removeHandler("tray:openMainWindow");
   ipcMain.removeHandler("tray:quit");
+  ipcMain.removeHandler("tray:resize");
   trayWindow?.destroy();
   trayWindow = null;
   tray?.destroy();

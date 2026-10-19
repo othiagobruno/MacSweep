@@ -1,540 +1,235 @@
 import { useState } from "react";
-import {
-  Trash2,
-  Search,
-  Check,
-  FolderOpen,
-  FileText,
-  Download,
-  Clock,
-  Sparkles,
-  CheckCircle2,
-  ChevronRight,
-  File,
-  Minus,
-} from "lucide-react";
+import { CheckCircle2, RotateCcw, Search, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ActionNotice } from "../components/action-notice";
+import { Checkbox } from "../components/checkbox";
 import { ConfirmDialog } from "../components/confirm-dialog";
-import { PulseLoader, ScanningLines } from "../components/loaders";
-import { formatBytes } from "../utils";
-import { useAppState } from "../contexts/app-state-context";
+import { JunkTree } from "../components/file-tree";
+import { FullDiskAccessNotice } from "../components/full-disk-access-notice";
+import { PulseLoader } from "../components/loaders";
+import {
+  ActionBar,
+  PageHeader,
+  ScanHero,
+  ScanningState,
+} from "../components/page";
+import { useToast } from "../components/toast";
+import { useCleaner } from "../hooks/use-cleaner";
+import { api } from "../lib/api";
+import { formatBytes, sumBy } from "../utils";
 import type { SystemJunkResult } from "../types";
 
-const categoryIcons: Record<string, React.ReactNode> = {
-  "User Cache": <FolderOpen size={18} />,
-  "System Logs": <FileText size={18} />,
-  "Temporary Files": <Clock size={18} />,
-  "Old Downloads": <Download size={18} />,
-  "Xcode Derived Data": <FolderOpen size={18} />,
-  "Homebrew Cache": <FolderOpen size={18} />,
-};
+type Phase = "idle" | "scanning" | "results";
 
 export function SystemJunk() {
   const { t } = useTranslation();
-  const {
-    systemJunk: {
-      isScanning,
-      setIsScanning,
-      results,
-      setResults,
-      selected,
-      setSelected,
-      isCleaning,
-      setIsCleaning,
-      cleaned,
-      setCleaned,
-    },
-  } = useAppState();
+  const toast = useToast();
+  const { clean, isCleaning, dialog } = useCleaner();
 
-  const [showCleanConfirm, setShowCleanConfirm] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [feedback, setFeedback] = useState<{
-    tone: "success" | "warning" | "error";
-    message: string;
-  } | null>(null);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [results, setResults] = useState<SystemJunkResult[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
 
-  // selected now stores individual file paths
-  const allFilePaths = results.flatMap((r) => r.files.map((f) => f.path));
+  const categories = results.filter((c) => c.files.length > 0);
+  const accessDenied = results.some((c) => c.accessDenied);
+  const allFiles = categories.flatMap((c) => c.files);
+  const selectedSize = sumBy(
+    allFiles.filter((f) => selected.has(f.path)),
+    (f) => f.size,
+  );
 
-  async function scanSystemJunkResults() {
-    if (window.electronAPI) {
-      const junkResults = await window.electronAPI.scan.systemJunk();
-      return junkResults.filter((category) => category.files.length > 0);
-    }
-
-    await new Promise((r) => setTimeout(r, 2000));
-    return getMockData();
-  }
-
-  async function handleScan() {
-    setIsScanning(true);
-    setCleaned(false);
-    setFeedback(null);
-
+  async function scan(keepSelection?: Set<string>) {
+    setPhase("scanning");
     try {
-      const junkResults = await scanSystemJunkResults();
-      setResults(junkResults);
-      // Select all files by default
-      const allPaths = junkResults.flatMap((r) => r.files.map((f) => f.path));
-      setSelected(new Set(allPaths));
-      setCleaned(junkResults.length === 0);
+      const junk = await api.scan.systemJunk();
+      setResults(junk);
+      const paths = junk.flatMap((c) => c.files.map((f) => f.path));
+      setSelected(
+        keepSelection
+          ? new Set(paths.filter((p) => keepSelection.has(p)))
+          : new Set(
+              junk
+                .filter((c) => c.defaultSelected)
+                .flatMap((c) => c.files.map((f) => f.path)),
+            ),
+      );
     } catch {
-      const mock = getMockData();
-      setResults(mock);
-      setSelected(new Set(mock.flatMap((r) => r.files.map((f) => f.path))));
-      setCleaned(mock.length === 0);
+      toast.show({ tone: "error", title: t("errors.scanFailed") });
     }
-
-    setIsScanning(false);
-  }
-
-  function toggleExpand(category: string) {
-    const next = new Set(expanded);
-    if (next.has(category)) {
-      next.delete(category);
-    } else {
-      next.add(category);
-    }
-    setExpanded(next);
+    setPhase("results");
   }
 
   function toggleFile(path: string) {
-    const next = new Set(selected);
-    if (next.has(path)) {
-      next.delete(path);
-    } else {
-      next.add(path);
-    }
-    setSelected(next);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
   }
 
-  function toggleCategory(category: string) {
-    const cat = results.find((r) => r.category === category);
-    if (!cat) return;
-
-    const catPaths = cat.files.map((f) => f.path);
-    const allSelected = catPaths.every((p) => selected.has(p));
-    const next = new Set(selected);
-
-    if (allSelected) {
-      catPaths.forEach((p) => next.delete(p));
-    } else {
-      catPaths.forEach((p) => next.add(p));
-    }
-    setSelected(next);
+  function toggleCategory(cat: SystemJunkResult) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const all = cat.files.every((f) => next.has(f.path));
+      for (const f of cat.files) {
+        if (all) next.delete(f.path);
+        else next.add(f.path);
+      }
+      return next;
+    });
   }
 
   function toggleAll() {
-    if (selected.size === allFilePaths.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(allFilePaths));
-    }
+    setSelected(
+      selected.size === allFiles.length
+        ? new Set()
+        : new Set(allFiles.map((f) => f.path)),
+    );
   }
-
-  function getCategoryState(cat: SystemJunkResult) {
-    const catPaths = cat.files.map((f) => f.path);
-    const selectedCount = catPaths.filter((p) => selected.has(p)).length;
-    if (selectedCount === 0) return "none";
-    if (selectedCount === catPaths.length) return "all";
-    return "partial";
-  }
-
-  const selectedTotal = results
-    .flatMap((r) => r.files)
-    .filter((f) => selected.has(f.path))
-    .reduce((sum, f) => sum + f.size, 0);
 
   async function handleClean() {
-    setShowCleanConfirm(false);
-    setIsCleaning(true);
-    setCleaned(false);
-    setFeedback(null);
+    setShowConfirm(false);
+    const paths = Array.from(selected);
+    const { freed, failed } = await clean(paths);
 
-    const selectedPaths = Array.from(selected);
-
-    if (window.electronAPI) {
-      try {
-        const result = await window.electronAPI.clean.files(selectedPaths);
-
-        if (result.failedPaths.length > 0) {
-          await window.electronAPI.shell.forceDelete(result.failedPaths);
-        }
-
-        const refreshedResults = await scanSystemJunkResults();
-        const remainingPaths = new Set(
-          refreshedResults.flatMap((category) =>
-            category.files.map((file) => file.path),
-          ),
-        );
-        const remainingSelected = selectedPaths.filter((path) =>
-          remainingPaths.has(path),
-        );
-
-        setResults(refreshedResults);
-        setSelected(new Set(remainingSelected));
-        setCleaned(refreshedResults.length === 0);
-        window.dispatchEvent(new Event("macsweep:disk-usage-refresh"));
-
-        if (remainingSelected.length === 0) {
-          setFeedback({
-            tone: "success",
-            message:
-              refreshedResults.length === 0
-                ? t("systemJunk.cleanSuccess")
-                : t("systemJunk.cleanSuccessWithRemaining"),
-          });
-        } else if (remainingSelected.length < selectedPaths.length) {
-          setFeedback({
-            tone: "warning",
-            message: t("systemJunk.cleanPartial"),
-          });
-        } else {
-          setFeedback({
-            tone: "error",
-            message: t("systemJunk.cleanFailed"),
-          });
-        }
-      } catch {
-        setFeedback({
-          tone: "error",
-          message: t("systemJunk.cleanFailed"),
-        });
-      }
-    } else {
-      const nextResults = results
-        .map((category) => {
-          const files = category.files.filter((file) => !selected.has(file.path));
-          return {
-            ...category,
-            files,
-            totalSize: files.reduce((sum, file) => sum + file.size, 0),
-          };
-        })
-        .filter((category) => category.files.length > 0);
-
-      setResults(nextResults);
-      setSelected(new Set());
-      setCleaned(nextResults.length === 0);
-      setFeedback({
+    if (failed.length === 0) {
+      toast.show({
         tone: "success",
-        message:
-          nextResults.length === 0
-            ? t("systemJunk.cleanSuccess")
-            : t("systemJunk.cleanSuccessWithRemaining"),
+        title: t("systemJunk.cleanSuccess", { size: formatBytes(freed) }),
       });
+    } else if (freed > 0) {
+      toast.show({
+        tone: "warning",
+        title: t("systemJunk.cleanSuccess", { size: formatBytes(freed) }),
+        message: t("systemJunk.cleanPartial", { count: failed.length }),
+      });
+    } else {
+      toast.show({ tone: "error", title: t("systemJunk.cleanFailed") });
     }
-
-    setIsCleaning(false);
+    // Re-scan so the list reflects what is really left on disk.
+    await scan(new Set(failed));
   }
 
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <div className="page-header">
-          <h1 className="page-title">{t("systemJunk.title")}</h1>
-          <p className="page-subtitle">{t("systemJunk.subtitle")}</p>
-        </div>
-
-        {feedback && (
-          <ActionNotice tone={feedback.tone} message={feedback.message} />
-        )}
-
-        {results.length === 0 && !isScanning && !cleaned && (
-          <div className="scan-container">
-            <div className="fade-in">
-              <div className="scan-circle-wrapper">
-                <div className="scan-circle-bg" />
-                <button className="scan-btn" onClick={handleScan}>
-                  <Search size={36} />
-                  {t("common.scan")}
-                </button>
-              </div>
-              <p className="scan-status">{t("systemJunk.scanStatus")}</p>
-            </div>
-          </div>
-        )}
-
-        {isScanning && (
-          <div className="scan-container fade-in" style={{ minHeight: 300 }}>
-            <PulseLoader label={t("systemJunk.scanning")} size="lg" />
-            <ScanningLines />
-          </div>
-        )}
-
-        {cleaned && (
-          <div className="scan-container fade-in">
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 12,
-              }}
-            >
-              <CheckCircle2 size={64} style={{ color: "var(--success)" }} />
-              <h2 style={{ fontSize: 22, fontWeight: 700 }}>
-                {t("systemJunk.allClean")}
-              </h2>
-              <p className="scan-status">{t("systemJunk.junkRemoved")}</p>
+        <PageHeader
+          title={t("systemJunk.title")}
+          subtitle={t("systemJunk.subtitle")}
+          actions={
+            phase === "results" && (
               <button
-                className="btn btn-secondary"
-                style={{ marginTop: 16 }}
-                onClick={() => {
-                  setCleaned(false);
-                  handleScan();
-                }}
+                className="btn btn-sm btn-secondary"
+                onClick={() => scan()}
+                disabled={isCleaning}
               >
-                {t("common.scanAgain")}
+                <RotateCcw size={14} />
+                {t("common.rescan")}
               </button>
-            </div>
-          </div>
+            )
+          }
+        />
+
+        {phase === "idle" && (
+          <ScanHero
+            icon={<Search size={36} />}
+            label={t("common.scan")}
+            hint={t("systemJunk.scanStatus")}
+            onScan={() => scan()}
+          />
         )}
 
-        {results.length > 0 && !isScanning && (
+        {phase === "scanning" && (
+          <ScanningState label={t("systemJunk.scanning")} />
+        )}
+
+        {phase === "results" && (
           <div className="fade-in">
-            <div className="file-tree">
-              {[...results]
-                .sort(
-                  (a, b) =>
-                    b.files.reduce((sum, file) => sum + file.size, 0) -
-                    a.files.reduce((sum, file) => sum + file.size, 0),
-                )
-                .map((cat) => {
-                  const state = getCategoryState(cat);
-                  const isOpen = expanded.has(cat.category);
-                  const categorySize = cat.files.reduce(
-                    (sum, file) => sum + file.size,
-                    0,
-                  );
-                  const catSelectedSize = cat.files
-                    .filter((f) => selected.has(f.path))
-                    .reduce((sum, f) => sum + f.size, 0);
+            {accessDenied && <FullDiskAccessNotice />}
 
-                  return (
-                    <div key={cat.category} className="file-tree-group">
-                      <div className="file-tree-category">
-                        <div className="file-tree-category-left">
-                          <div
-                            className={`checkbox ${
-                              state === "all"
-                                ? "checked"
-                                : state === "partial"
-                                  ? "indeterminate"
-                                  : ""
-                            }`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleCategory(cat.category);
-                            }}
-                          >
-                            {state === "all" && <Check size={12} />}
-                            {state === "partial" && <Minus size={12} />}
-                          </div>
-                          <div className="result-row-icon">
-                            {categoryIcons[cat.category] || (
-                              <Trash2 size={18} />
-                            )}
-                          </div>
-                          <div
-                            style={{ cursor: "pointer", flex: 1 }}
-                            onClick={() => toggleExpand(cat.category)}
-                          >
-                            <h4
-                              style={{
-                                fontSize: 14,
-                                fontWeight: 600,
-                                marginBottom: 2,
-                              }}
-                            >
-                              {cat.category}
-                            </h4>
-                            <p
-                              style={{
-                                fontSize: 12,
-                                color: "var(--text-secondary)",
-                              }}
-                            >
-                              {t("systemJunk.items", {
-                                count: cat.files.length,
-                              })}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="file-tree-category-right">
-                          <span className="result-size">
-                            {state === "all"
-                              ? formatBytes(categorySize)
-                              : state === "partial"
-                                ? formatBytes(catSelectedSize)
-                                : formatBytes(categorySize)}
-                          </span>
-                          <div
-                            className={`file-tree-chevron ${isOpen ? "rotated" : ""}`}
-                            onClick={() => toggleExpand(cat.category)}
-                            style={{ cursor: "pointer" }}
-                          >
-                            <ChevronRight size={16} />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div
-                        className={`file-tree-children ${isOpen ? "open" : ""}`}
-                      >
-                        <div className="file-tree-children-inner">
-                          {cat.files
-                            .sort((a, b) => b.size - a.size)
-                            .map((file) => (
-                              <div
-                                key={file.path}
-                                className={`file-tree-file ${selected.has(file.path) ? "selected" : ""}`}
-                                onClick={() => toggleFile(file.path)}
-                              >
-                                <div className="file-tree-file-left">
-                                  <div
-                                    className={`checkbox ${selected.has(file.path) ? "checked" : ""}`}
-                                  >
-                                    {selected.has(file.path) && (
-                                      <Check size={10} />
-                                    )}
-                                  </div>
-                                  <File
-                                    size={14}
-                                    className="file-tree-file-icon"
-                                  />
-                                  <div className="file-tree-file-info">
-                                    <span className="file-tree-file-name">
-                                      {file.name}
-                                    </span>
-                                    <span className="file-tree-path">
-                                      {file.path}
-                                    </span>
-                                  </div>
-                                </div>
-                                <span className="file-tree-file-size">
-                                  {formatBytes(file.size)}
-                                </span>
-                              </div>
-                            ))}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
+            {categories.length === 0 ? (
+              <div className="scan-container" style={{ minHeight: 280 }}>
+                <CheckCircle2 size={64} style={{ color: "var(--success)" }} />
+                <h2 className="success-title">{t("systemJunk.allClean")}</h2>
+                <p className="scan-status">{t("systemJunk.junkRemoved")}</p>
+              </div>
+            ) : (
+              <>
+                <div className="search-bar">
+                  <Search size={18} />
+                  <input
+                    type="search"
+                    placeholder={t("systemJunk.filterPlaceholder")}
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                  />
+                </div>
+                <JunkTree
+                  categories={categories}
+                  selected={selected}
+                  filter={filter}
+                  onToggleFile={toggleFile}
+                  onToggleCategory={toggleCategory}
+                />
+              </>
+            )}
           </div>
         )}
       </div>
 
-      {results.length > 0 && !isScanning && (
-        <div className="page-actions-bar">
-          <div className="toolbar">
-            <div className="toolbar-left">
-              <div
-                className={`checkbox ${
-                  selected.size === allFilePaths.length
-                    ? "checked"
-                    : selected.size > 0
-                      ? "indeterminate"
-                      : ""
-                }`}
-                onClick={toggleAll}
-              >
-                {selected.size === allFilePaths.length && <Check size={12} />}
-                {selected.size > 0 && selected.size < allFilePaths.length && (
-                  <Minus size={12} />
-                )}
-              </div>
-              <span
-                style={{
-                  fontSize: 13,
-                  color: "var(--text-secondary)",
-                }}
-              >
-                {t("systemJunk.filesSelectedInfo", {
-                  selected: selected.size,
-                  total: allFilePaths.length,
-                })}
-                {selected.size > 0 && ` (${formatBytes(selectedTotal)})`}
-              </span>
-            </div>
-            <div className="toolbar-right">
-              <button
-                className="btn btn-primary"
-                disabled={selected.size === 0 || isCleaning}
-                onClick={() => setShowCleanConfirm(true)}
-              >
-                {isCleaning ? (
-                  <PulseLoader label={t("common.cleaning")} size="sm" />
-                ) : (
-                  <>
-                    <Sparkles size={16} />{" "}
-                    {t("systemJunk.cleanSize", {
-                      size: formatBytes(selectedTotal),
-                    })}
-                  </>
-                )}
-              </button>
-            </div>
+      {phase === "results" && categories.length > 0 && (
+        <ActionBar>
+          <div className="toolbar-left">
+            <Checkbox
+              checked={selected.size === allFiles.length}
+              indeterminate={
+                selected.size > 0 && selected.size < allFiles.length
+              }
+              onChange={toggleAll}
+              label={t("common.selectAll")}
+            />
+            <span className="toolbar-info">
+              {t("systemJunk.filesSelectedInfo", {
+                selected: selected.size,
+                total: allFiles.length,
+              })}
+            </span>
           </div>
-        </div>
+          <div className="toolbar-right">
+            <button
+              className="btn btn-primary"
+              disabled={selected.size === 0 || isCleaning}
+              onClick={() => setShowConfirm(true)}
+            >
+              {isCleaning ? (
+                <PulseLoader label={t("common.cleaning")} size="sm" />
+              ) : (
+                <>
+                  <Sparkles size={16} />
+                  {t("systemJunk.cleanSize", {
+                    size: formatBytes(selectedSize),
+                  })}
+                </>
+              )}
+            </button>
+          </div>
+        </ActionBar>
       )}
 
       <ConfirmDialog
-        isOpen={showCleanConfirm}
+        isOpen={showConfirm}
         title={t("systemJunk.confirmTitle")}
         message={t("systemJunk.confirmMessage", {
-          size: formatBytes(selectedTotal),
+          size: formatBytes(selectedSize),
           count: selected.size,
         })}
         confirmLabel={t("common.clean")}
-        variant="warning"
         onConfirm={handleClean}
-        onCancel={() => setShowCleanConfirm(false)}
+        onCancel={() => setShowConfirm(false)}
       />
+      {dialog}
     </div>
   );
-}
-
-function getMockData(): SystemJunkResult[] {
-  return [
-    {
-      category: "User Cache",
-      files: Array.from({ length: 25 }, (_, i) => ({
-        path: `/Users/user/Library/Caches/item${i}`,
-        size: Math.random() * 100 * 1024 * 1024,
-        name: `cache-${i}`,
-      })),
-      totalSize: 2.3 * 1024 * 1024 * 1024,
-    },
-    {
-      category: "System Logs",
-      files: Array.from({ length: 12 }, (_, i) => ({
-        path: `/var/log/item${i}`,
-        size: Math.random() * 50 * 1024 * 1024,
-        name: `log-${i}`,
-      })),
-      totalSize: 380 * 1024 * 1024,
-    },
-    {
-      category: "Temporary Files",
-      files: Array.from({ length: 8 }, (_, i) => ({
-        path: `/tmp/item${i}`,
-        size: Math.random() * 200 * 1024 * 1024,
-        name: `tmp-${i}`,
-      })),
-      totalSize: 920 * 1024 * 1024,
-    },
-    {
-      category: "Old Downloads",
-      files: Array.from({ length: 6 }, (_, i) => ({
-        path: `/Users/user/Downloads/old${i}`,
-        size: Math.random() * 500 * 1024 * 1024,
-        name: `download-${i}`,
-      })),
-      totalSize: 1.8 * 1024 * 1024 * 1024,
-    },
-  ];
 }

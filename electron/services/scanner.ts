@@ -1,265 +1,170 @@
-import { exec } from "child_process";
-import { promisify } from "util";
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import { diskSize, mapLimit } from "./exec";
+import type {
+  JunkCategoryId,
+  JunkItem,
+  ScanProgress,
+  SystemJunkResult,
+} from "../../shared/types";
 
-const execAsync = promisify(exec);
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-interface FileInfo {
-  path: string;
-  size: number;
-  name: string;
+interface CategorySpec {
+  id: JunkCategoryId;
+  dirs: string[];
+  defaultSelected: boolean;
+  /** Only include entries not modified for this many days. */
+  minAgeDays?: number;
+  /** Entry names to skip (exact match or prefix ending with "*"). */
+  skip?: string[];
 }
 
-interface JunkCategory {
-  category: string;
-  files: FileInfo[];
-  totalSize: number;
+/**
+ * Entries that are system-managed, in active use by macOS, or would only be
+ * recreated immediately. Skipping them avoids permission errors on clean.
+ */
+const CACHE_SKIP = [
+  "com.apple.*",
+  "CloudKit",
+  "FamilyCircle",
+  "GeoServices",
+  "Homebrew", // reported separately under developer caches
+];
+
+function categorySpecs(ownCacheNames: string[]): CategorySpec[] {
+  const home = os.homedir();
+  return [
+    {
+      id: "userCache",
+      dirs: [`${home}/Library/Caches`],
+      defaultSelected: true,
+      skip: [...CACHE_SKIP, ...ownCacheNames],
+    },
+    {
+      id: "userLogs",
+      dirs: [`${home}/Library/Logs`],
+      defaultSelected: true,
+      skip: ["com.apple.*"],
+    },
+    {
+      id: "tempFiles",
+      dirs: [os.tmpdir()],
+      defaultSelected: true,
+      minAgeDays: 3,
+    },
+    {
+      id: "trash",
+      dirs: [`${home}/.Trash`],
+      defaultSelected: true,
+    },
+    {
+      id: "oldDownloads",
+      dirs: [`${home}/Downloads`],
+      defaultSelected: false,
+      minAgeDays: 90,
+    },
+    {
+      id: "xcode",
+      dirs: [
+        `${home}/Library/Developer/Xcode/DerivedData`,
+        `${home}/Library/Developer/Xcode/iOS DeviceSupport`,
+        `${home}/Library/Developer/CoreSimulator/Caches`,
+      ],
+      defaultSelected: true,
+    },
+    {
+      id: "devCaches",
+      dirs: [
+        `${home}/.npm/_cacache`,
+        `${home}/Library/Caches/Homebrew`,
+        `${home}/.gradle/caches`,
+        `${home}/.cache`,
+      ],
+      defaultSelected: false,
+    },
+  ];
 }
 
-async function getDirectorySize(dirPath: string): Promise<number> {
-  try {
-    const { stdout } = await execAsync(`du -sk "${dirPath}" 2>/dev/null`);
-    const sizeKb = parseInt(stdout.split("\t")[0], 10);
-    return sizeKb * 1024;
-  } catch {
-    return 0;
-  }
+function matchesSkip(name: string, patterns: string[] = []): boolean {
+  const lower = name.toLowerCase();
+  return patterns.some((p) =>
+    p.endsWith("*")
+      ? lower.startsWith(p.slice(0, -1).toLowerCase())
+      : lower === p.toLowerCase(),
+  );
 }
 
-async function getFilesInDirectory(
-  dirPath: string,
-  maxDepth: number = 2,
-): Promise<FileInfo[]> {
-  const files: FileInfo[] = [];
-  try {
-    const { stdout } = await execAsync(
-      `find "${dirPath}" -maxdepth ${maxDepth} -type f -exec stat -f "%z %N" {} \\; 2>/dev/null | head -100`,
-    );
-    const lines = stdout.trim().split("\n").filter(Boolean);
-    for (const line of lines) {
-      const spaceIdx = line.indexOf(" ");
-      if (spaceIdx === -1) continue;
-      const size = parseInt(line.substring(0, spaceIdx), 10);
-      const filePath = line.substring(spaceIdx + 1);
-      files.push({
-        path: filePath,
-        size,
-        name: path.basename(filePath),
-      });
+async function scanCategory(spec: CategorySpec): Promise<SystemJunkResult> {
+  const entries: string[] = [];
+  let accessDenied = false;
+  const cutoff = spec.minAgeDays ? Date.now() - spec.minAgeDays * DAY_MS : 0;
+
+  for (const dir of spec.dirs) {
+    let names: string[];
+    try {
+      names = await fs.promises.readdir(dir);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "EPERM" || code === "EACCES") accessDenied = true;
+      continue;
     }
-  } catch {
-    // Directory might not exist or not be accessible
-  }
-  return files;
-}
 
-async function scanCategoryDirs(
-  categoryName: string,
-  dirs: string[],
-): Promise<JunkCategory> {
-  const allFiles: FileInfo[] = [];
-  let totalSize = 0;
-
-  for (const dir of dirs) {
-    const resolvedDir = dir.replace("~", os.homedir());
-    if (!fs.existsSync(resolvedDir)) continue;
-
-    const files = await getFilesInDirectory(resolvedDir, 2);
-    allFiles.push(...files);
-    const size = await getDirectorySize(resolvedDir);
-    totalSize += size;
+    for (const name of names) {
+      if (name === ".DS_Store" || name === ".localized") continue;
+      if (matchesSkip(name, spec.skip)) continue;
+      const full = path.join(dir, name);
+      if (cutoff) {
+        try {
+          const st = await fs.promises.lstat(full);
+          if (st.mtimeMs > cutoff) continue;
+        } catch {
+          continue;
+        }
+      }
+      entries.push(full);
+    }
   }
 
-  allFiles.sort((a, b) => b.size - a.size);
+  const files: JunkItem[] = (
+    await mapLimit(entries, 8, async (full) => ({
+      path: full,
+      name: path.basename(full),
+      size: await diskSize(full),
+    }))
+  ).filter((item) => item.size > 0);
+
+  files.sort((a, b) => b.size - a.size);
 
   return {
-    category: categoryName,
-    files: allFiles.slice(0, 50),
-    totalSize,
+    id: spec.id,
+    files,
+    totalSize: files.reduce((sum, f) => sum + f.size, 0),
+    defaultSelected: spec.defaultSelected,
+    accessDenied: accessDenied && files.length === 0 ? true : undefined,
   };
 }
 
-export async function scanSystemJunk(): Promise<JunkCategory[]> {
-  const home = os.homedir();
-  const categories: JunkCategory[] = [];
+export async function scanSystemJunk(
+  options: {
+    onProgress?: (progress: ScanProgress) => void;
+    ownCacheNames?: string[];
+  } = {},
+): Promise<SystemJunkResult[]> {
+  const specs = categorySpecs(options.ownCacheNames ?? []);
+  const results: SystemJunkResult[] = [];
 
-  // User Caches
-  categories.push(
-    await scanCategoryDirs("User Cache", [`${home}/Library/Caches`]),
-  );
-
-  // System Logs
-  categories.push(
-    await scanCategoryDirs("System Logs", [`${home}/Library/Logs`, "/var/log"]),
-  );
-
-  // Temporary Files
-  categories.push(
-    await scanCategoryDirs("Temporary Files", ["/tmp", "/private/var/folders"]),
-  );
-
-  // Downloads (old files > 30 days)
-  try {
-    const { stdout } = await execAsync(
-      `find "${home}/Downloads" -maxdepth 1 -type f -mtime +30 -exec stat -f "%z %N" {} \\; 2>/dev/null | head -50`,
-    );
-    const files: FileInfo[] = [];
-    let totalSize = 0;
-    const lines = stdout.trim().split("\n").filter(Boolean);
-    for (const line of lines) {
-      const spaceIdx = line.indexOf(" ");
-      if (spaceIdx === -1) continue;
-      const size = parseInt(line.substring(0, spaceIdx), 10);
-      const filePath = line.substring(spaceIdx + 1);
-      files.push({
-        path: filePath,
-        size,
-        name: path.basename(filePath),
-      });
-      totalSize += size;
-    }
-    files.sort((a, b) => b.size - a.size);
-    categories.push({
-      category: "Old Downloads",
-      files,
-      totalSize,
+  for (let i = 0; i < specs.length; i++) {
+    options.onProgress?.({
+      progress: Math.round((i / specs.length) * 100),
+      categoryId: specs[i].id,
     });
-  } catch {
-    categories.push({
-      category: "Old Downloads",
-      files: [],
-      totalSize: 0,
-    });
+    const result = await scanCategory(specs[i]);
+    if (result.files.length > 0 || result.accessDenied) results.push(result);
   }
 
-  // Xcode derived data
-  const xcodeDir = `${home}/Library/Developer/Xcode/DerivedData`;
-  if (fs.existsSync(xcodeDir)) {
-    categories.push(await scanCategoryDirs("Xcode Derived Data", [xcodeDir]));
-  }
-
-  // Brew cache
-  const brewCache = `${home}/Library/Caches/Homebrew`;
-  if (fs.existsSync(brewCache)) {
-    categories.push(await scanCategoryDirs("Homebrew Cache", [brewCache]));
-  }
-
-  categories.sort((a, b) => b.totalSize - a.totalSize);
-  return categories;
-}
-
-export interface ScanOptions {
-  minSizeMB?: number;
-  maxDepth?: number;
-  excludedFolders?: string[];
-  scanHidden?: boolean;
-}
-
-export async function scanLargeFiles(options: ScanOptions = {}): Promise<
-  Array<{
-    path: string;
-    name: string;
-    size: number;
-    lastModified: string;
-    extension: string;
-  }>
-> {
-  const {
-    minSizeMB = 50,
-    maxDepth = 5,
-    excludedFolders = [],
-    scanHidden = false,
-  } = options;
-
-  const home = os.homedir();
-  const results: Array<{
-    path: string;
-    name: string;
-    size: number;
-    lastModified: string;
-    extension: string;
-  }> = [];
-
-  // Build exclusion clauses
-  const defaultExclusions = [
-    "*/Library/Application Support/MobileSync/*",
-    "*/.Trash/*",
-    "*/node_modules/*",
-    "*/.git/*",
-  ];
-
-  if (!scanHidden) {
-    defaultExclusions.push("*/.*/*");
-  }
-
-  const allExclusions = [
-    ...defaultExclusions,
-    ...excludedFolders.map((f) => `${f}/*`),
-  ];
-
-  const exclusionStr = allExclusions.map((e) => `-not -path "${e}"`).join(" ");
-
-  try {
-    const { stdout } = await execAsync(
-      `find "${home}" -maxdepth ${maxDepth} -type f -size +${minSizeMB}M ` +
-        `${exclusionStr} ` +
-        `-exec stat -f "%z|%m|%N" {} \\; 2>/dev/null | sort -t'|' -k1 -rn | head -50`,
-    );
-
-    const lines = stdout.trim().split("\n").filter(Boolean);
-    for (const line of lines) {
-      const parts = line.split("|");
-      if (parts.length < 3) continue;
-      const size = parseInt(parts[0], 10);
-      const mtime = parseInt(parts[1], 10);
-      const filePath = parts.slice(2).join("|");
-      const ext = path.extname(filePath).toLowerCase();
-
-      results.push({
-        path: filePath,
-        name: path.basename(filePath),
-        size,
-        lastModified: new Date(mtime * 1000).toISOString(),
-        extension: ext || "unknown",
-      });
-    }
-  } catch {
-    // Scan failed
-  }
-
+  options.onProgress?.({ progress: 100 });
+  results.sort((a, b) => b.totalSize - a.totalSize);
   return results;
-}
-
-export async function scanApplications(): Promise<
-  Array<{
-    name: string;
-    path: string;
-    size: number;
-  }>
-> {
-  const apps: Array<{ name: string; path: string; size: number }> = [];
-
-  try {
-    const { stdout } = await execAsync("ls -1 /Applications 2>/dev/null");
-    const entries = stdout.trim().split("\n").filter(Boolean);
-
-    for (const entry of entries) {
-      if (!entry.endsWith(".app")) continue;
-      const appPath = `/Applications/${entry}`;
-      const size = await getDirectorySize(appPath);
-      apps.push({
-        name: entry.replace(".app", ""),
-        path: appPath,
-        size,
-      });
-    }
-
-    apps.sort((a, b) => b.size - a.size);
-  } catch {
-    // Failed to list apps
-  }
-
-  return apps;
 }

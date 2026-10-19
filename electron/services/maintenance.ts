@@ -1,110 +1,123 @@
-import { exec } from "child_process";
-import { promisify } from "util";
+import os from "node:os";
+import { errorMessage, isCancelled, run, runAsAdmin } from "./exec";
+import { getMemoryUsage } from "./system-info";
+import type {
+  MaintenanceResult,
+  MaintenanceTaskId,
+} from "../../shared/types";
 
-const execAsync = promisify(exec);
+const LSREGISTER =
+  "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 
-interface MaintenanceResult {
-  success: boolean;
-  message: string;
+/** Commands that must run as root. Static strings only — no user input. */
+const ADMIN_COMMANDS: Partial<Record<MaintenanceTaskId, string>> = {
+  freeRam: "/usr/sbin/purge",
+  flushDns: "/usr/bin/dscacheutil -flushcache; /usr/bin/killall -HUP mDNSResponder",
+  rebuildSpotlight: "/usr/bin/mdutil -E /",
+  thinSnapshots: "/usr/bin/tmutil thinlocalsnapshots / 999999999999 4",
+};
+
+export const MAINTENANCE_TASKS: MaintenanceTaskId[] = [
+  "freeRam",
+  "flushDns",
+  "rebuildSpotlight",
+  "repairPermissions",
+  "rebuildLaunchServices",
+  "thinSnapshots",
+];
+
+function isTaskId(value: unknown): value is MaintenanceTaskId {
+  return MAINTENANCE_TASKS.includes(value as MaintenanceTaskId);
 }
 
-export async function freeRam(): Promise<MaintenanceResult> {
-  try {
-    // Use osascript to request admin privileges with a visible dialog
-    await execAsync(
-      "osascript -e 'do shell script \"purge\" with administrator privileges' 2>/dev/null",
-    );
-    return {
-      success: true,
-      message: "RAM memory freed successfully",
-    };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("-128")) {
-      return {
-        success: false,
-        message: "Authorization cancelled by user",
-      };
-    }
-    return {
-      success: true,
-      message: "RAM optimization completed",
-    };
+function formatGB(bytes: number): string {
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+}
+
+function adminCommandFor(taskId: MaintenanceTaskId): string | null {
+  if (taskId === "repairPermissions") {
+    const uid = os.userInfo().uid;
+    if (!Number.isInteger(uid)) return null;
+    return `/usr/sbin/diskutil resetUserPermissions / ${uid}`;
   }
+  return ADMIN_COMMANDS[taskId] ?? null;
 }
 
-export async function flushDns(): Promise<MaintenanceResult> {
-  try {
-    // Use osascript to request admin privileges with a visible dialog
-    await execAsync(
-      "osascript -e 'do shell script \"dscacheutil -flushcache; killall -HUP mDNSResponder\" with administrator privileges' 2>/dev/null",
-    );
-    return {
-      success: true,
-      message: "DNS cache flushed successfully",
-    };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("-128")) {
-      return {
-        success: false,
-        message: "Authorization cancelled by user",
-      };
-    }
+/**
+ * Run maintenance tasks. All tasks needing root are combined into a single
+ * privileged script so the user only types their password once.
+ */
+export async function runMaintenance(
+  taskIds: unknown,
+): Promise<MaintenanceResult[]> {
+  const tasks = (Array.isArray(taskIds) ? taskIds : []).filter(isTaskId);
+  const results: MaintenanceResult[] = [];
+
+  // Non-privileged tasks
+  if (tasks.includes("rebuildLaunchServices")) {
     try {
-      await execAsync("dscacheutil -flushcache 2>/dev/null");
-      return {
-        success: true,
-        message: "DNS cache partially flushed",
-      };
-    } catch {
-      return {
+      await run(LSREGISTER, [
+        "-kill",
+        "-r",
+        "-domain",
+        "local",
+        "-domain",
+        "system",
+        "-domain",
+        "user",
+      ], { timeout: 5 * 60 * 1000 });
+      results.push({ taskId: "rebuildLaunchServices", success: true, cancelled: false });
+    } catch (err) {
+      results.push({
+        taskId: "rebuildLaunchServices",
         success: false,
-        message: "Failed to flush DNS cache",
-      };
+        cancelled: false,
+        error: errorMessage(err),
+      });
     }
   }
-}
 
-export async function rebuildSpotlight(): Promise<MaintenanceResult> {
+  const adminTasks = tasks.filter((id) => adminCommandFor(id) !== null);
+  if (adminTasks.length === 0) return results;
+
+  const memBefore = adminTasks.includes("freeRam") ? await getMemoryUsage() : null;
+
+  // Each task writes a marker so we can tell which ones succeeded.
+  const script = adminTasks
+    .map(
+      (id) =>
+        `if { ${adminCommandFor(id)}; } >/dev/null 2>&1; then echo "ok:${id}"; else echo "fail:${id}"; fi`,
+    )
+    .join("; ");
+
+  let output = "";
   try {
-    // Use osascript to request admin privileges with a visible dialog
-    await execAsync(
-      "osascript -e 'do shell script \"mdutil -E /\" with administrator privileges' 2>/dev/null",
+    output = await runAsAdmin(
+      `(${script})`,
+      "MacSweep needs your password to run maintenance tasks.",
     );
-    return {
-      success: true,
-      message: "Spotlight index rebuild initiated",
-    };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("-128")) {
-      return {
+  } catch (err) {
+    const cancelled = isCancelled(err);
+    for (const id of adminTasks) {
+      results.push({
+        taskId: id,
         success: false,
-        message: "Authorization cancelled by user",
-      };
+        cancelled,
+        error: cancelled ? undefined : errorMessage(err),
+      });
     }
-    return {
-      success: false,
-      message: "Failed to rebuild Spotlight index",
-    };
+    return results;
   }
-}
 
-export async function repairPermissions(): Promise<MaintenanceResult> {
-  try {
-    const username = process.env.USER || "admin";
-    await execAsync(
-      `diskutil resetUserPermissions / $(id -u ${username}) 2>/dev/null`,
-    );
-    return {
-      success: true,
-      message: "Disk permissions repaired successfully",
-    };
-  } catch {
-    return {
-      success: false,
-      message: "Failed to repair permissions. Try running as administrator.",
-    };
+  for (const id of adminTasks) {
+    const ok = output.includes(`ok:${id}`);
+    const result: MaintenanceResult = { taskId: id, success: ok, cancelled: false };
+    if (ok && id === "freeRam" && memBefore) {
+      const memAfter = await getMemoryUsage();
+      const reclaimed = Math.max(0, memBefore.used - memAfter.used);
+      result.detail = formatGB(reclaimed);
+    }
+    results.push(result);
   }
+  return results;
 }

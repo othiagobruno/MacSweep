@@ -1,336 +1,419 @@
-import { useState } from "react";
-import { Package, Search, Trash2, Box, Check } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  ChevronRight,
+  FolderSearch,
+  Package,
+  RotateCcw,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Checkbox } from "../components/checkbox";
 import { ConfirmDialog } from "../components/confirm-dialog";
-import { PulseLoader, ScanningLines } from "../components/loaders";
-import { formatBytes } from "../utils";
-import { useAppState } from "../contexts/app-state-context";
-import type { AppInfo } from "../types";
+import { PulseLoader } from "../components/loaders";
+import {
+  EmptyState,
+  PageHeader,
+  ScanHero,
+  ScanningState,
+} from "../components/page";
+import { useToast } from "../components/toast";
+import { api } from "../lib/api";
+import { requestDiskRefresh } from "../lib/events";
+import { daysSince, formatBytes, shortenPath, sumBy } from "../utils";
+import type { AppInfo, AppLeftover } from "../types";
+
+type Phase = "idle" | "scanning" | "results";
+type SortKey = "size" | "name" | "unused";
+
+const UNUSED_DAYS = 90;
+
+interface Expanded {
+  app: AppInfo;
+  leftovers: AppLeftover[] | null;
+  selected: Set<string>;
+}
 
 export function Uninstaller() {
   const { t } = useTranslation();
-  const {
-    uninstaller: {
-      isScanning,
-      setIsScanning,
-      apps,
-      setApps,
-      search,
-      setSearch,
-      selected,
-      setSelected,
-      scanned,
-      setScanned,
-    },
-  } = useAppState();
+  const toast = useToast();
 
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [apps, setApps] = useState<AppInfo[]>([]);
+  const [icons, setIcons] = useState<Record<string, string | null>>({});
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("size");
+  const [expanded, setExpanded] = useState<Expanded | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
 
-  async function handleScan() {
-    setIsScanning(true);
-
+  async function scan() {
+    setPhase("scanning");
+    setExpanded(null);
     try {
-      let results: AppInfo[];
-      if (window.electronAPI) {
-        results = await window.electronAPI.scan.applications();
-      } else {
-        await new Promise((r) => setTimeout(r, 2000));
-        results = getMockApps();
-      }
-      setApps(results.map((a) => ({ ...a, iconDataUrl: null })));
-      setScanned(true);
-
-      // Load icons in background
-      if (window.electronAPI?.app?.getIcon) {
-        for (const app of results) {
-          try {
-            const icon = await window.electronAPI.app.getIcon(app.path);
-            setApps((prev) =>
-              prev.map((a) =>
-                a.path === app.path ? { ...a, iconDataUrl: icon } : a,
-              ),
-            );
-          } catch {
-            // skip
-          }
-        }
-      }
+      setApps(await api.scan.applications());
     } catch {
-      setApps(getMockApps());
-      setScanned(true);
+      toast.show({ tone: "error", title: t("errors.scanFailed") });
     }
-
-    setIsScanning(false);
+    setPhase("results");
   }
 
-  function toggleApp(path: string) {
-    const newSelected = new Set(selected);
-    if (newSelected.has(path)) {
-      newSelected.delete(path);
-    } else {
-      newSelected.add(path);
-    }
-    setSelected(newSelected);
-  }
-
-  function toggleAll() {
-    if (selected.size === filteredApps.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(filteredApps.map((a) => a.path)));
-    }
-  }
-
-  const filteredApps = apps
-    .filter((app) => app.name.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => b.size - a.size);
-
-  const selectedSize = apps
-    .filter((a) => selected.has(a.path))
-    .reduce((sum, a) => sum + a.size, 0);
-
-  async function handleUninstall() {
-    setShowConfirm(false);
-
-    if (window.electronAPI) {
-      const paths = Array.from(selected);
-      try {
-        const result = await window.electronAPI.shell.forceDelete(paths);
-        if (!result.success) {
-          // User cancelled auth or partial failure — don't remove from list
-          return;
-        }
-      } catch {
-        return;
+  // Load icons progressively after the list renders.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const app of apps) {
+        if (cancelled) return;
+        if (app.path in icons) continue;
+        const icon = await api.apps.getIcon(app.path).catch(() => null);
+        if (!cancelled) setIcons((prev) => ({ ...prev, [app.path]: icon }));
       }
-    }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apps]);
 
-    setApps(apps.filter((a) => !selected.has(a.path)));
-    setSelected(new Set());
+  const visibleApps = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = apps.filter(
+      (a) =>
+        a.name.toLowerCase().includes(q) ||
+        (a.bundleId ?? "").toLowerCase().includes(q),
+    );
+    return filtered.sort((a, b) => {
+      if (sortKey === "name") return a.name.localeCompare(b.name);
+      if (sortKey === "unused") {
+        const da = daysSince(a.lastUsed) ?? Infinity;
+        const db = daysSince(b.lastUsed) ?? Infinity;
+        return db - da;
+      }
+      return b.size - a.size;
+    });
+  }, [apps, search, sortKey]);
+
+  async function toggleApp(app: AppInfo) {
+    if (expanded?.app.path === app.path) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded({ app, leftovers: null, selected: new Set() });
+    const leftovers = await api.apps.leftovers(app).catch(() => []);
+    setExpanded((prev) =>
+      prev?.app.path === app.path
+        ? { app, leftovers, selected: new Set(leftovers.map((l) => l.path)) }
+        : prev,
+    );
+  }
+
+  function toggleLeftover(path: string) {
+    setExpanded((prev) => {
+      if (!prev) return prev;
+      const selected = new Set(prev.selected);
+      if (selected.has(path)) selected.delete(path);
+      else selected.add(path);
+      return { ...prev, selected };
+    });
+  }
+
+  const selectedLeftovers =
+    expanded?.leftovers?.filter((l) => expanded.selected.has(l.path)) ?? [];
+  const totalToRemove =
+    (expanded?.app.size ?? 0) + sumBy(selectedLeftovers, (l) => l.size);
+
+  async function uninstall() {
+    setConfirming(false);
+    if (!expanded) return;
+    const { app } = expanded;
+    setRemoving(app.path);
+    try {
+      const result = await api.apps.uninstall({
+        appPath: app.path,
+        bundleId: app.bundleId,
+        leftoverPaths: selectedLeftovers.map((l) => l.path),
+      });
+      if (result.success) {
+        setApps((prev) => prev.filter((a) => a.path !== app.path));
+        setExpanded(null);
+        requestDiskRefresh();
+        toast.show({
+          tone: "success",
+          title: t("uninstaller.success", { name: app.name }),
+          message: t("uninstaller.successDesc", {
+            size: formatBytes(result.freedSpace),
+          }),
+        });
+      } else if (result.cancelled) {
+        toast.show({ tone: "info", title: t("errors.adminCancelled") });
+      } else {
+        toast.show({
+          tone: "error",
+          title: t("uninstaller.failed", { name: app.name }),
+          message: result.errors[0],
+        });
+      }
+    } finally {
+      setRemoving(null);
+    }
+  }
+
+  function usageBadge(app: AppInfo) {
+    const days = daysSince(app.lastUsed);
+    if (days === null)
+      return (
+        <span className="tag tag-muted">{t("uninstaller.neverOpened")}</span>
+      );
+    if (days >= UNUSED_DAYS)
+      return (
+        <span className="tag tag-warning">
+          {t("uninstaller.unused", { days })}
+        </span>
+      );
+    return null;
   }
 
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <div className="page-header">
-          <h1 className="page-title">{t("uninstaller.title")}</h1>
-          <p className="page-subtitle">{t("uninstaller.subtitle")}</p>
-        </div>
+        <PageHeader
+          title={t("uninstaller.title")}
+          subtitle={t("uninstaller.subtitle")}
+          actions={
+            phase === "results" && (
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={scan}
+                disabled={removing !== null}
+              >
+                <RotateCcw size={14} />
+                {t("common.rescan")}
+              </button>
+            )
+          }
+        />
 
-        {!scanned && !isScanning && (
-          <div className="scan-container">
-            <div className="fade-in">
-              <div className="scan-circle-wrapper">
-                <div className="scan-circle-bg" />
-                <button className="scan-btn" onClick={handleScan}>
-                  <Package size={36} />
-                  {t("common.scan")}
-                </button>
-              </div>
-              <p className="scan-status">{t("uninstaller.scanStatus")}</p>
-            </div>
-          </div>
+        {phase === "idle" && (
+          <ScanHero
+            icon={<Package size={36} />}
+            label={t("common.scan")}
+            hint={t("uninstaller.scanStatus")}
+            onScan={scan}
+          />
         )}
 
-        {isScanning && (
-          <div className="scan-container fade-in" style={{ minHeight: 300 }}>
-            <PulseLoader label={t("uninstaller.scanning")} size="lg" />
-            <ScanningLines />
-          </div>
+        {phase === "scanning" && (
+          <ScanningState label={t("uninstaller.scanning")} />
         )}
 
-        {scanned && !isScanning && (
+        {phase === "results" && (
           <div className="fade-in">
-            <div className="search-bar">
-              <Search size={18} />
-              <input
-                type="text"
-                placeholder={t("uninstaller.searchPlaceholder")}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+            <div className="filter-row">
+              <div className="search-bar search-bar-inline">
+                <Search size={16} />
+                <input
+                  type="search"
+                  placeholder={t("uninstaller.searchPlaceholder")}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="chip-group">
+                {(["size", "name", "unused"] as SortKey[]).map((key) => (
+                  <button
+                    key={key}
+                    className={`chip ${sortKey === key ? "active" : ""}`}
+                    aria-pressed={sortKey === key}
+                    onClick={() => setSortKey(key)}
+                  >
+                    {t(
+                      `uninstaller.sort${key[0].toUpperCase()}${key.slice(1)}`,
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {filteredApps.length === 0 ? (
-              <div className="empty-state">
-                <Package size={48} />
-                <h3>{t("uninstaller.noApps")}</h3>
-                <p>{t("uninstaller.tryDifferent")}</p>
-              </div>
+            <p className="list-caption">
+              {t("uninstaller.applications", { count: visibleApps.length })} ·{" "}
+              {formatBytes(sumBy(visibleApps, (a) => a.size))}
+            </p>
+
+            {visibleApps.length === 0 ? (
+              <EmptyState
+                icon={<Package size={48} />}
+                title={t("uninstaller.noApps")}
+                message={t("uninstaller.tryDifferent")}
+              />
             ) : (
               <div className="results-container">
-                {filteredApps.map((app) => (
-                  <div
-                    key={app.path}
-                    className="result-row"
-                    onClick={() => toggleApp(app.path)}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <div className="result-row-left">
-                      <div
-                        className={`checkbox ${
-                          selected.has(app.path) ? "checked" : ""
-                        }`}
+                {visibleApps.map((app) => {
+                  const isOpen = expanded?.app.path === app.path;
+                  const icon = icons[app.path];
+                  return (
+                    <div
+                      key={app.path}
+                      className={`app-row ${isOpen ? "open" : ""}`}
+                    >
+                      <button
+                        className="result-row app-row-head"
+                        onClick={() => toggleApp(app)}
+                        aria-expanded={isOpen}
                       >
-                        {selected.has(app.path) && <Check size={12} />}
-                      </div>
-                      <div
-                        className="result-row-icon"
-                        style={{
-                          background: app.iconDataUrl
-                            ? "transparent"
-                            : undefined,
-                          overflow: "hidden",
-                          borderRadius: "var(--radius-md)",
-                        }}
-                      >
-                        {app.iconDataUrl ? (
-                          <img
-                            src={app.iconDataUrl}
-                            alt={app.name}
-                            style={{
-                              width: 36,
-                              height: 36,
-                              objectFit: "contain",
-                            }}
+                        <div className="result-row-left">
+                          <div
+                            className={`result-row-icon ${icon ? "has-image" : ""}`}
+                          >
+                            {icon ? (
+                              <img src={icon} alt="" width={36} height={36} />
+                            ) : (
+                              <Box size={20} />
+                            )}
+                          </div>
+                          <div className="result-row-info">
+                            <h4>
+                              {app.name}
+                              {app.version && (
+                                <span className="app-version">
+                                  {app.version}
+                                </span>
+                              )}
+                            </h4>
+                            <p className="mono-path">
+                              {app.bundleId ?? shortenPath(app.path)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="result-row-right">
+                          {usageBadge(app)}
+                          <span className="result-size">
+                            {formatBytes(app.size)}
+                          </span>
+                          <ChevronRight
+                            size={16}
+                            className={`file-tree-chevron ${isOpen ? "rotated" : ""}`}
                           />
-                        ) : (
-                          <Box size={20} />
-                        )}
-                      </div>
-                      <div className="result-row-info">
-                        <h4>{app.name}</h4>
-                        <p
-                          style={{
-                            fontSize: 11,
-                            color: "var(--text-muted)",
-                            fontFamily: "monospace",
-                          }}
-                        >
-                          {app.path}
-                        </p>
-                      </div>
+                        </div>
+                      </button>
+
+                      {isOpen && expanded && (
+                        <div className="app-row-detail fade-in">
+                          <div className="leftover-row static">
+                            <Checkbox
+                              checked
+                              disabled
+                              onChange={() => undefined}
+                              label={app.name}
+                            />
+                            <span className="leftover-kind">
+                              {t("uninstaller.appBundle")}
+                            </span>
+                            <span className="leftover-path" title={app.path}>
+                              {shortenPath(app.path)}
+                            </span>
+                            <span className="leftover-size">
+                              {formatBytes(app.size)}
+                            </span>
+                          </div>
+
+                          <div className="leftover-title">
+                            {t("uninstaller.leftovers")}
+                          </div>
+                          {expanded.leftovers === null ? (
+                            <PulseLoader
+                              label={t("uninstaller.findingLeftovers")}
+                              size="sm"
+                            />
+                          ) : expanded.leftovers.length === 0 ? (
+                            <p className="leftover-empty">
+                              {t("uninstaller.noLeftovers")}
+                            </p>
+                          ) : (
+                            expanded.leftovers.map((l) => (
+                              <div
+                                key={l.path}
+                                className="leftover-row"
+                                onClick={() => toggleLeftover(l.path)}
+                              >
+                                <Checkbox
+                                  checked={expanded.selected.has(l.path)}
+                                  onChange={() => toggleLeftover(l.path)}
+                                  label={l.path}
+                                />
+                                <span className="leftover-kind">
+                                  {t(`uninstaller.kinds.${l.kind}`)}
+                                </span>
+                                <span className="leftover-path" title={l.path}>
+                                  {shortenPath(l.path)}
+                                </span>
+                                <button
+                                  className="icon-btn"
+                                  title={t("common.revealInFinder")}
+                                  aria-label={t("common.revealInFinder")}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void api.shell.revealInFinder(l.path);
+                                  }}
+                                >
+                                  <FolderSearch size={14} />
+                                </button>
+                                <span className="leftover-size">
+                                  {formatBytes(l.size)}
+                                </span>
+                              </div>
+                            ))
+                          )}
+
+                          <div className="app-row-actions">
+                            <span className="toolbar-info">
+                              {t("uninstaller.total", {
+                                size: formatBytes(totalToRemove),
+                              })}
+                            </span>
+                            <button
+                              className="btn btn-danger btn-sm"
+                              disabled={
+                                removing !== null || expanded.leftovers === null
+                              }
+                              onClick={() => setConfirming(true)}
+                            >
+                              {removing === app.path ? (
+                                <PulseLoader size="sm" />
+                              ) : (
+                                <>
+                                  <Trash2 size={14} />
+                                  {t("uninstaller.uninstall")}
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="result-row-right">
-                      <span className="result-size">
-                        {formatBytes(app.size)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {scanned && !isScanning && filteredApps.length > 0 && (
-        <div className="page-actions-bar">
-          <div className="toolbar">
-            <div className="toolbar-left">
-              <div
-                className={`checkbox ${
-                  selected.size === filteredApps.length &&
-                  filteredApps.length > 0
-                    ? "checked"
-                    : ""
-                }`}
-                onClick={toggleAll}
-              >
-                {selected.size === filteredApps.length &&
-                  filteredApps.length > 0 && <Check size={12} />}
-              </div>
-              <span
-                style={{
-                  fontSize: 13,
-                  color: "var(--text-secondary)",
-                }}
-              >
-                {t("uninstaller.applications", { count: filteredApps.length })}
-                {selected.size > 0 &&
-                  ` • ${t("uninstaller.selectedInfo", { count: selected.size, size: formatBytes(selectedSize) })}`}
-              </span>
-            </div>
-            <div className="toolbar-right">
-              {selected.size > 0 && (
-                <button
-                  className="btn btn-danger btn-sm"
-                  onClick={() => setShowConfirm(true)}
-                >
-                  <Trash2 size={14} />
-                  {t("uninstaller.uninstall", { count: selected.size })}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       <ConfirmDialog
-        isOpen={showConfirm}
-        title={t("uninstaller.confirmTitle", { count: selected.size })}
-        message={t("uninstaller.confirmMessage", {
-          count: selected.size,
-          size: formatBytes(selectedSize),
+        isOpen={confirming && expanded !== null}
+        title={t("uninstaller.confirmTitle", {
+          name: expanded?.app.name ?? "",
         })}
-        confirmLabel={t("uninstaller.title")}
+        message={t("uninstaller.confirmMessage", {
+          name: expanded?.app.name ?? "",
+          count: selectedLeftovers.length,
+          size: formatBytes(totalToRemove),
+        })}
+        confirmLabel={t("uninstaller.uninstall")}
         variant="danger"
-        onConfirm={handleUninstall}
-        onCancel={() => setShowConfirm(false)}
+        onConfirm={uninstall}
+        onCancel={() => setConfirming(false)}
       />
     </div>
   );
-}
-
-function getMockApps(): AppInfo[] {
-  return [
-    {
-      name: "Xcode",
-      path: "/Applications/Xcode.app",
-      size: 12.5 * 1024 * 1024 * 1024,
-    },
-    {
-      name: "Adobe Photoshop",
-      path: "/Applications/Adobe Photoshop.app",
-      size: 3.2 * 1024 * 1024 * 1024,
-    },
-    {
-      name: "Docker",
-      path: "/Applications/Docker.app",
-      size: 2.8 * 1024 * 1024 * 1024,
-    },
-    {
-      name: "Google Chrome",
-      path: "/Applications/Google Chrome.app",
-      size: 1.2 * 1024 * 1024 * 1024,
-    },
-    {
-      name: "Visual Studio Code",
-      path: "/Applications/Visual Studio Code.app",
-      size: 890 * 1024 * 1024,
-    },
-    { name: "Slack", path: "/Applications/Slack.app", size: 650 * 1024 * 1024 },
-    {
-      name: "Spotify",
-      path: "/Applications/Spotify.app",
-      size: 480 * 1024 * 1024,
-    },
-    {
-      name: "Discord",
-      path: "/Applications/Discord.app",
-      size: 420 * 1024 * 1024,
-    },
-    { name: "Figma", path: "/Applications/Figma.app", size: 350 * 1024 * 1024 },
-    { name: "iTerm", path: "/Applications/iTerm.app", size: 120 * 1024 * 1024 },
-    {
-      name: "Notion",
-      path: "/Applications/Notion.app",
-      size: 280 * 1024 * 1024,
-    },
-    {
-      name: "Postman",
-      path: "/Applications/Postman.app",
-      size: 510 * 1024 * 1024,
-    },
-  ];
 }

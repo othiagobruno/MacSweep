@@ -1,318 +1,432 @@
-import { useState, useEffect, useRef } from "react";
-import { Cpu, MemoryStick, HardDrive, Gauge } from "lucide-react";
+import { useCallback, useState } from "react";
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  ResponsiveContainer,
-  Area,
-  AreaChart,
-  Tooltip,
-} from "recharts";
+  Battery,
+  BatteryCharging,
+  Cpu,
+  HardDrive,
+  Laptop,
+  MemoryStick,
+  XCircle,
+  Zap,
+} from "lucide-react";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import { useTranslation } from "react-i18next";
-import { formatBytes } from "../utils";
-import type { CpuUsage, MemoryUsage, DiskUsage } from "../types";
+import { ConfirmDialog } from "../components/confirm-dialog";
+import { PageHeader } from "../components/page";
+import { useToast } from "../components/toast";
+import { useIsActivePage } from "../contexts/navigation-context";
+import { usePolling } from "../hooks/use-polling";
+import { api } from "../lib/api";
+import { formatBytes, formatDuration, formatTime } from "../utils";
+import type {
+  BatteryInfo,
+  CpuUsage,
+  DiskUsage,
+  MemoryUsage,
+  ProcessInfo,
+  SystemInfo,
+} from "../types";
 
-interface ChartDataPoint {
+interface ChartPoint {
   time: string;
   value: number;
 }
 
+const HISTORY = 40;
+
+function level(value: number, warn: number, danger: number) {
+  return value >= danger ? "error" : value >= warn ? "running" : "done";
+}
+
+function ChartTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ value: number; payload: ChartPoint }>;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="chart-tooltip">
+      <strong>{payload[0].value.toFixed(1)}%</strong>
+      <span>{payload[0].payload.time}</span>
+    </div>
+  );
+}
+
+function UsageChart({
+  data,
+  color,
+  id,
+}: {
+  data: ChartPoint[];
+  color: string;
+  id: string;
+}) {
+  return (
+    <div className="perf-chart">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart
+          data={data}
+          margin={{ top: 4, right: 0, bottom: 0, left: 0 }}
+        >
+          <defs>
+            <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+              <stop
+                offset="0%"
+                style={{ stopColor: color, stopOpacity: 0.35 }}
+              />
+              <stop
+                offset="100%"
+                style={{ stopColor: color, stopOpacity: 0 }}
+              />
+            </linearGradient>
+          </defs>
+          <YAxis domain={[0, 100]} hide />
+          <Tooltip
+            content={<ChartTooltip />}
+            cursor={{ stroke: "var(--border-hover)" }}
+          />
+          <Area
+            type="monotone"
+            dataKey="value"
+            stroke={color}
+            strokeWidth={2}
+            fill={`url(#${id})`}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export function Performance() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const toast = useToast();
+  const isActive = useIsActivePage("performance");
+
   const [cpu, setCpu] = useState<CpuUsage | null>(null);
   const [memory, setMemory] = useState<MemoryUsage | null>(null);
   const [disk, setDisk] = useState<DiskUsage | null>(null);
-  const [cpuHistory, setCpuHistory] = useState<ChartDataPoint[]>([]);
-  const [memHistory, setMemHistory] = useState<ChartDataPoint[]>([]);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [battery, setBattery] = useState<BatteryInfo | null>(null);
+  const [info, setInfo] = useState<SystemInfo | null>(null);
+  const [processes, setProcesses] = useState<ProcessInfo[]>([]);
+  const [cpuHistory, setCpuHistory] = useState<ChartPoint[]>([]);
+  const [memHistory, setMemHistory] = useState<ChartPoint[]>([]);
+  const [toQuit, setToQuit] = useState<ProcessInfo | null>(null);
 
-  useEffect(() => {
-    fetchData();
-    intervalRef.current = setInterval(fetchData, 2000);
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
+  const fetchFast = useCallback(async () => {
+    const [cpuData, memData, procs] = await Promise.all([
+      api.system.cpuUsage(),
+      api.system.memoryUsage(),
+      api.system.topProcesses(8),
+    ]);
+    const time = formatTime(new Date(), i18n.language);
+    setCpu(cpuData);
+    setMemory(memData);
+    setProcesses(procs);
+    setCpuHistory((prev) => [
+      ...prev.slice(-(HISTORY - 1)),
+      { time, value: cpuData.total },
+    ]);
+    setMemHistory((prev) => [
+      ...prev.slice(-(HISTORY - 1)),
+      { time, value: memData.percentUsed },
+    ]);
+  }, [i18n.language]);
+
+  const fetchSlow = useCallback(async () => {
+    const [diskData, batteryData, infoData] = await Promise.all([
+      api.system.diskUsage(),
+      api.system.batteryInfo(),
+      api.system.info(),
+    ]);
+    setDisk(diskData);
+    setBattery(batteryData);
+    setInfo(infoData);
   }, []);
 
-  async function fetchData() {
-    const now = new Date().toLocaleTimeString("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+  // Only poll while this page is on screen.
+  usePolling(fetchFast, 2000, isActive);
+  usePolling(fetchSlow, 30_000, isActive);
 
-    try {
-      if (window.electronAPI) {
-        const [cpuData, memData, diskData] = await Promise.all([
-          window.electronAPI.system.cpuUsage(),
-          window.electronAPI.system.memoryUsage(),
-          window.electronAPI.system.diskUsage(),
-        ]);
-        setCpu(cpuData);
-        setMemory(memData);
-        setDisk(diskData);
-
-        setCpuHistory((prev) => [
-          ...prev.slice(-29),
-          { time: now, value: cpuData.total },
-        ]);
-        setMemHistory((prev) => [
-          ...prev.slice(-29),
-          { time: now, value: memData.percentUsed },
-        ]);
-      } else {
-        // Mock data
-        const mockCpu = {
-          user: Math.random() * 40 + 10,
-          system: Math.random() * 20 + 5,
-          idle: 0,
-          total: 0,
-        };
-        mockCpu.total = mockCpu.user + mockCpu.system;
-        mockCpu.idle = 100 - mockCpu.total;
-
-        const mockMem = {
-          total: 16 * 1024 * 1024 * 1024,
-          used: (8 + Math.random() * 4) * 1024 * 1024 * 1024,
-          free: 0,
-          percentUsed: 0,
-        };
-        mockMem.free = mockMem.total - mockMem.used;
-        mockMem.percentUsed = (mockMem.used / mockMem.total) * 100;
-
-        setCpu(mockCpu);
-        setMemory(mockMem);
-        setDisk({
-          total: 500 * 1024 * 1024 * 1024,
-          used: 320 * 1024 * 1024 * 1024,
-          free: 180 * 1024 * 1024 * 1024,
-          percentUsed: 64,
-          mount: "/",
-        });
-
-        setCpuHistory((prev) => [
-          ...prev.slice(-29),
-          { time: now, value: mockCpu.total },
-        ]);
-        setMemHistory((prev) => [
-          ...prev.slice(-29),
-          { time: now, value: mockMem.percentUsed },
-        ]);
-      }
-    } catch {
-      // silently fail
+  async function quitProcess() {
+    const proc = toQuit;
+    setToQuit(null);
+    if (!proc) return;
+    const result = await api.system.killProcess(proc.pid);
+    if (result.success) {
+      setProcesses((prev) => prev.filter((p) => p.pid !== proc.pid));
+      toast.show({
+        tone: "success",
+        title: t("performance.quitSuccess", { name: proc.name }),
+      });
+    } else {
+      toast.show({
+        tone: "error",
+        title: t("performance.quitFailed", { name: proc.name }),
+        message: result.error,
+      });
     }
   }
+
+  const memSegments = memory
+    ? [
+        { key: "appMemory", value: memory.app, color: "var(--accent-primary)" },
+        { key: "wired", value: memory.wired, color: "var(--warning)" },
+        { key: "compressed", value: memory.compressed, color: "var(--danger)" },
+        { key: "cached", value: memory.cached, color: "var(--info)" },
+      ]
+    : [];
 
   return (
     <div className="page-container">
       <div className="page-scrollable">
-        <div className="page-header">
-          <h1 className="page-title">{t("performance.title")}</h1>
-          <p className="page-subtitle">{t("performance.subtitle")}</p>
-        </div>
+        <PageHeader
+          title={t("performance.title")}
+          subtitle={t("performance.subtitle")}
+        />
 
         <div className="perf-grid">
-          {/* CPU Card */}
+          {/* CPU */}
           <div className="perf-card">
             <div className="perf-card-header">
               <span className="perf-card-title">
-                <Cpu size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+                <Cpu size={14} />
                 {t("performance.cpuUsage")}
               </span>
               <span
-                className={`status-badge ${
-                  (cpu?.total ?? 0) > 80
-                    ? "error"
-                    : (cpu?.total ?? 0) > 50
-                      ? "running"
-                      : "done"
-                }`}
+                className={`status-badge ${level(cpu?.total ?? 0, 50, 80)}`}
               >
-                {(cpu?.total ?? 0) > 80
+                {(cpu?.total ?? 0) >= 80
                   ? t("performance.high")
-                  : (cpu?.total ?? 0) > 50
+                  : (cpu?.total ?? 0) >= 50
                     ? t("performance.medium")
                     : t("performance.low")}
               </span>
             </div>
             <div className="perf-card-value">
-              {cpu ? `${cpu.total.toFixed(1)}%` : "..."}
+              {cpu ? `${cpu.total.toFixed(1)}%` : "…"}
             </div>
             <div className="perf-card-label">
-              {t("performance.user")}: {cpu?.user.toFixed(1) ?? 0}% |{" "}
-              {t("performance.system")}: {cpu?.system.toFixed(1) ?? 0}%
+              {t("performance.user")} {cpu?.user.toFixed(1) ?? 0}% ·{" "}
+              {t("performance.system")} {cpu?.system.toFixed(1) ?? 0}%
             </div>
-            <div style={{ height: 120, marginTop: 16 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={cpuHistory}>
-                  <defs>
-                    <linearGradient
-                      id="cpuGradient"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="0%" stopColor="#6c5ce7" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#6c5ce7" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <YAxis domain={[0, 100]} hide />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#6c5ce7"
-                    strokeWidth={2}
-                    fill="url(#cpuGradient)"
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            <UsageChart
+              data={cpuHistory}
+              color="var(--accent-primary)"
+              id="cpuGradient"
+            />
           </div>
 
-          {/* Memory Card */}
+          {/* Memory */}
           <div className="perf-card">
             <div className="perf-card-header">
               <span className="perf-card-title">
-                <MemoryStick
-                  size={14}
-                  style={{ marginRight: 6, verticalAlign: -2 }}
-                />
+                <MemoryStick size={14} />
                 {t("performance.memory")}
               </span>
               <span
-                className={`status-badge ${
-                  (memory?.percentUsed ?? 0) > 85
-                    ? "error"
-                    : (memory?.percentUsed ?? 0) > 60
-                      ? "running"
-                      : "done"
-                }`}
+                className={`status-badge ${level(memory?.pressure ?? 0, 50, 75)}`}
               >
-                {memory
-                  ? `${formatBytes(memory.used)} / ${formatBytes(memory.total)}`
-                  : "..."}
+                {t("performance.pressure")}{" "}
+                {memory ? `${Math.round(memory.pressure)}%` : "…"}
               </span>
             </div>
             <div className="perf-card-value">
-              {memory ? `${memory.percentUsed.toFixed(1)}%` : "..."}
+              {memory ? `${memory.percentUsed.toFixed(1)}%` : "…"}
             </div>
             <div className="perf-card-label">
-              {t("performance.freeLabel")}:{" "}
-              {memory ? formatBytes(memory.free) : "..."}
+              {memory
+                ? t("performance.usedOf", {
+                    used: formatBytes(memory.used),
+                    total: formatBytes(memory.total),
+                  })
+                : "…"}
             </div>
-            <div style={{ height: 120, marginTop: 16 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={memHistory}>
-                  <defs>
-                    <linearGradient
-                      id="memGradient"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="0%" stopColor="#00d2a0" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#00d2a0" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <YAxis domain={[0, 100]} hide />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    stroke="#00d2a0"
-                    strokeWidth={2}
-                    fill="url(#memGradient)"
-                    isAnimationActive={false}
+            <UsageChart
+              data={memHistory}
+              color="var(--success)"
+              id="memGradient"
+            />
+          </div>
+
+          {/* Memory breakdown */}
+          {memory && (
+            <div className="perf-card span-2">
+              <div className="stacked-bar" aria-hidden="true">
+                {memSegments.map((s) => (
+                  <div
+                    key={s.key}
+                    className="stacked-bar-segment"
+                    style={{
+                      width: `${(s.value / memory.total) * 100}%`,
+                      background: s.color,
+                    }}
                   />
-                </AreaChart>
-              </ResponsiveContainer>
+                ))}
+              </div>
+              <div className="storage-legend">
+                {memSegments.map((s) => (
+                  <div key={s.key} className="storage-legend-item">
+                    <div
+                      className="storage-legend-dot"
+                      style={{ background: s.color }}
+                    />
+                    {t(`performance.${s.key}`)}{" "}
+                    <strong>{formatBytes(s.value)}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Disk */}
+          <div className="perf-card">
+            <div className="perf-card-header">
+              <span className="perf-card-title">
+                <HardDrive size={14} />
+                {t("performance.diskUsage")}
+              </span>
+              <span
+                className={`status-badge ${level(disk?.percentUsed ?? 0, 80, 90)}`}
+              >
+                {disk ? formatBytes(disk.free) : "…"} {t("common.free")}
+              </span>
+            </div>
+            <div className="perf-card-value">
+              {disk ? `${disk.percentUsed.toFixed(1)}%` : "…"}
+            </div>
+            <div className="perf-card-label">
+              {disk
+                ? t("performance.usedOf", {
+                    used: formatBytes(disk.used),
+                    total: formatBytes(disk.total),
+                  })
+                : "…"}
+            </div>
+            <div className="storage-bar" style={{ marginTop: 16 }}>
+              <div
+                className="storage-segment"
+                style={{
+                  width: `${disk?.percentUsed ?? 0}%`,
+                  background: "var(--accent-gradient)",
+                }}
+              />
             </div>
           </div>
 
-          {/* Disk Card */}
-          <div className="perf-card" style={{ gridColumn: "span 2" }}>
+          {/* System info / battery */}
+          <div className="perf-card">
             <div className="perf-card-header">
               <span className="perf-card-title">
-                <HardDrive
-                  size={14}
-                  style={{ marginRight: 6, verticalAlign: -2 }}
-                />
-                {t("performance.diskUsage")}
+                <Laptop size={14} />
+                {t("performance.systemInfo")}
               </span>
-              <span className="status-badge idle">{disk?.mount ?? "/"}</span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-end",
-                marginBottom: 16,
-              }}
-            >
-              <div>
-                <div className="perf-card-value">
-                  {disk ? `${disk.percentUsed.toFixed(1)}%` : "..."}
-                </div>
-                <div className="perf-card-label">
-                  {disk
-                    ? t("performance.usedOf", {
-                        used: formatBytes(disk.used),
-                        total: formatBytes(disk.total),
-                      })
-                    : "..."}
-                </div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 700,
-                    color: "var(--success)",
-                  }}
+              {battery && (
+                <span
+                  className={`status-badge ${battery.percentCharge <= 20 ? "error" : "done"}`}
                 >
-                  {disk ? formatBytes(disk.free) : "..."}
-                </div>
-                <div className="perf-card-label">{t("common.available")}</div>
-              </div>
+                  {battery.isCharging ? (
+                    <BatteryCharging size={12} />
+                  ) : (
+                    <Battery size={12} />
+                  )}
+                  {battery.percentCharge}%
+                </span>
+              )}
             </div>
-            <div className="storage-bar-container">
-              <div className="storage-bar">
-                <div
-                  className="storage-segment"
-                  style={{
-                    width: `${disk?.percentUsed ?? 0}%`,
-                    background:
-                      "linear-gradient(90deg, #6c5ce7, #a29bfe, #74b9ff)",
-                  }}
-                />
+            <dl className="info-list">
+              <div>
+                <dt>{t("performance.chip")}</dt>
+                <dd title={info?.chip}>
+                  {info
+                    ? `${info.chip} · ${t("performance.cores", { count: info.cores })}`
+                    : "…"}
+                </dd>
               </div>
-              <div className="storage-legend">
-                <div className="storage-legend-item">
-                  <div
-                    className="storage-legend-dot"
-                    style={{ background: "#6c5ce7" }}
-                  />
-                  {t("common.used")}
-                </div>
-                <div className="storage-legend-item">
-                  <div
-                    className="storage-legend-dot"
-                    style={{ background: "var(--bg-tertiary)" }}
-                  />
-                  {t("performance.freeLabel")}
-                </div>
+              <div>
+                <dt>{t("performance.os")}</dt>
+                <dd>{info?.osVersion ?? "…"}</dd>
               </div>
+              <div>
+                <dt>{t("performance.uptime")}</dt>
+                <dd>{info ? formatDuration(info.uptime) : "…"}</dd>
+              </div>
+              {battery && (
+                <div>
+                  <dt>{t("performance.battery")}</dt>
+                  <dd>
+                    {t("performance.batteryHealth")} {battery.healthPercent}% ·{" "}
+                    {t("performance.batteryCycles")} {battery.cycleCount}
+                  </dd>
+                </div>
+              )}
+            </dl>
+          </div>
+
+          {/* Processes */}
+          <div className="perf-card span-2">
+            <div className="perf-card-header">
+              <span className="perf-card-title">
+                <Zap size={14} />
+                {t("performance.topProcesses")}
+              </span>
             </div>
+            <table className="process-table">
+              <thead>
+                <tr>
+                  <th>{t("performance.process")}</th>
+                  <th className="num">{t("performance.cpu")}</th>
+                  <th className="num">{t("performance.memory")}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {processes.map((proc) => (
+                  <tr key={proc.pid}>
+                    <td>
+                      <span
+                        className="process-name"
+                        title={`${proc.name} (PID ${proc.pid})`}
+                      >
+                        {proc.name}
+                      </span>
+                    </td>
+                    <td className="num">
+                      <span className={`cpu-pill ${level(proc.cpu, 25, 60)}`}>
+                        {proc.cpu.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="num">{formatBytes(proc.memoryBytes)}</td>
+                    <td className="num">
+                      <button
+                        className="icon-btn danger"
+                        title={t("performance.quit")}
+                        aria-label={`${t("performance.quit")} ${proc.name}`}
+                        onClick={() => setToQuit(proc)}
+                      >
+                        <XCircle size={15} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={toQuit !== null}
+        title={t("performance.quitConfirmTitle", { name: toQuit?.name ?? "" })}
+        message={t("performance.quitConfirmMessage")}
+        confirmLabel={t("performance.quit")}
+        variant="danger"
+        onConfirm={quitProcess}
+        onCancel={() => setToQuit(null)}
+      />
     </div>
   );
 }

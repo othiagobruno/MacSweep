@@ -1,27 +1,35 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import {
+  errorMessage,
+  isCancelled,
+  run,
+  runAsAdmin,
+  shellQuote,
+  tryRun,
+} from "./exec";
+import type { StartupItem, ToggleResult } from "../../shared/types";
 
-const execFileAsync = promisify(execFile);
 const homeDir = os.homedir();
+const uid = os.userInfo().uid;
 
-export interface StartupItem {
-  name: string;
-  path: string;
-  programPath: string;
-  kind: "LaunchAgent" | "LaunchDaemon";
-  isEnabled: boolean;
-  appPath: string | null;
-}
+const SOURCES: Array<{
+  dir: string;
+  kind: StartupItem["kind"];
+  scope: StartupItem["scope"];
+}> = [
+  { dir: path.join(homeDir, "Library", "LaunchAgents"), kind: "LaunchAgent", scope: "user" },
+  { dir: "/Library/LaunchAgents", kind: "LaunchAgent", scope: "user" },
+  { dir: "/Library/LaunchDaemons", kind: "LaunchDaemon", scope: "system" },
+];
 
-function resolveDisplayName(label: string, programPath: string): string {
+export function resolveDisplayName(label: string, programPath: string): string {
   const appMatch = programPath.match(/\/([^/]+)\.app/i);
   if (appMatch) return appMatch[1];
 
   const parts = label.split(".");
-  const prefixes = ["com", "org", "io", "net", "edu"];
+  const prefixes = ["com", "org", "io", "net", "edu", "dev", "co"];
   let startIdx = 0;
   if (parts.length > 2 && prefixes.includes(parts[0].toLowerCase())) {
     startIdx = 2;
@@ -31,191 +39,155 @@ function resolveDisplayName(label: string, programPath: string): string {
 
   const meaningful = parts.slice(startIdx);
   if (meaningful.length === 0) return label;
-
   return meaningful
     .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join(" ");
 }
 
 function findAppBundle(programPath: string): string | null {
-  if (!programPath) return null;
-  const appMatch = programPath.match(/^(.*?\.app)\b/);
-  if (appMatch) {
-    try {
-      fs.accessSync(appMatch[1]);
-      return appMatch[1];
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-/**
- * Check if a plist path needs admin privileges.
- */
-function needsAdmin(plistPath: string): boolean {
-  return plistPath.startsWith("/Library/") || !plistPath.startsWith(homeDir);
-}
-
-/**
- * Run a shell command with administrator privileges via osascript.
- * Shows the macOS native password dialog.
- */
-async function runWithAdmin(command: string): Promise<void> {
-  const escaped = command.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  await execFileAsync("osascript", [
-    "-e",
-    `do shell script "${escaped}" with administrator privileges`,
-  ]);
-}
-
-/**
- * Run a shell command normally.
- */
-async function runCommand(command: string): Promise<void> {
-  await execFileAsync("/bin/sh", ["-c", command]);
-}
-
-async function parsePlist(
-  plistPath: string,
-  kind: "LaunchAgent" | "LaunchDaemon",
-): Promise<StartupItem | null> {
+  const appMatch = programPath.match(/^(.*?\.app)(?=\/|$)/);
+  if (!appMatch) return null;
   try {
-    await fs.promises.access(plistPath);
-    const { stdout } = await execFileAsync("plutil", [
-      "-convert",
-      "json",
-      "-o",
-      "-",
-      plistPath,
-    ]);
-
-    const data = JSON.parse(stdout);
-    const label = data.Label || path.basename(plistPath, ".plist");
-
-    let programPath = "";
-    if (data.Program) {
-      programPath = data.Program;
-    } else if (
-      Array.isArray(data.ProgramArguments) &&
-      data.ProgramArguments.length > 0
-    ) {
-      programPath = data.ProgramArguments[0];
-    }
-
-    const isEnabled = data.Disabled !== true;
-    const appPath = findAppBundle(programPath);
-    const name = resolveDisplayName(label, programPath);
-
-    return {
-      name,
-      path: plistPath,
-      programPath,
-      kind,
-      isEnabled,
-      appPath,
-    };
+    fs.accessSync(appMatch[1]);
+    return appMatch[1];
   } catch {
     return null;
   }
 }
 
-async function scanDirectory(
-  dirPath: string,
-  kind: "LaunchAgent" | "LaunchDaemon",
-): Promise<StartupItem[]> {
-  try {
-    const entries = await fs.promises.readdir(dirPath);
-    const plistFiles = entries.filter((f) => f.endsWith(".plist"));
-    const results = await Promise.all(
-      plistFiles.map((f) => parsePlist(path.join(dirPath, f), kind)),
-    );
-    return results.filter((item): item is StartupItem => item !== null);
-  } catch {
-    return [];
+function domainFor(scope: StartupItem["scope"]): string {
+  return scope === "system" ? "system" : `gui/${uid}`;
+}
+
+/** Parse `launchctl print-disabled` → label → disabled. */
+export function parseDisabledOverrides(stdout: string): Map<string, boolean> {
+  const map = new Map<string, boolean>();
+  for (const line of stdout.split("\n")) {
+    const match = line.match(/"([^"]+)"\s*=>\s*(\w+)/);
+    if (match) {
+      map.set(match[1], match[2] === "disabled" || match[2] === "true");
+    }
   }
+  return map;
+}
+
+async function readPlist(plistPath: string): Promise<Record<string, unknown> | null> {
+  const out = await tryRun("plutil", ["-convert", "json", "-o", "-", plistPath]);
+  if (!out) return null;
+  try {
+    return JSON.parse(out) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+async function parseItem(
+  plistPath: string,
+  source: (typeof SOURCES)[number],
+  overrides: Map<string, boolean>,
+): Promise<StartupItem | null> {
+  const data = await readPlist(plistPath);
+  if (!data) return null;
+
+  const label =
+    typeof data.Label === "string" ? data.Label : path.basename(plistPath, ".plist");
+  let programPath = "";
+  if (typeof data.Program === "string") {
+    programPath = data.Program;
+  } else if (Array.isArray(data.ProgramArguments) && data.ProgramArguments.length > 0) {
+    programPath = String(data.ProgramArguments[0]);
+  }
+
+  const override = overrides.get(label);
+  const isEnabled = override !== undefined ? !override : data.Disabled !== true;
+
+  return {
+    name: resolveDisplayName(label, programPath),
+    label,
+    path: plistPath,
+    programPath,
+    kind: source.kind,
+    scope: source.scope,
+    isEnabled,
+    appPath: findAppBundle(programPath),
+  };
 }
 
 export async function scanStartupItems(): Promise<StartupItem[]> {
-  const directories: Array<{
-    path: string;
-    kind: "LaunchAgent" | "LaunchDaemon";
-  }> = [
-    {
-      path: path.join(homeDir, "Library", "LaunchAgents"),
-      kind: "LaunchAgent",
-    },
-    { path: "/Library/LaunchAgents", kind: "LaunchAgent" },
-    { path: "/Library/LaunchDaemons", kind: "LaunchDaemon" },
-  ];
+  const [userOut, systemOut] = await Promise.all([
+    tryRun("launchctl", ["print-disabled", `gui/${uid}`]),
+    tryRun("launchctl", ["print-disabled", "system"]),
+  ]);
+  const userOverrides = parseDisabledOverrides(userOut ?? "");
+  const systemOverrides = parseDisabledOverrides(systemOut ?? "");
 
-  const allResults = await Promise.all(
-    directories.map((dir) => scanDirectory(dir.path, dir.kind)),
+  const all = await Promise.all(
+    SOURCES.map(async (source) => {
+      let names: string[];
+      try {
+        names = await fs.promises.readdir(source.dir);
+      } catch {
+        return [];
+      }
+      const overrides = source.scope === "system" ? systemOverrides : userOverrides;
+      const items = await Promise.all(
+        names
+          .filter((f) => f.endsWith(".plist"))
+          .map((f) => parseItem(path.join(source.dir, f), source, overrides)),
+      );
+      return items.filter((i): i is StartupItem => i !== null);
+    }),
   );
 
-  return allResults.flat().sort((a, b) => a.name.localeCompare(b.name));
+  return all.flat().sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
- * Disable a startup item by writing Disabled=true
- * and unloading it via launchctl.
- * Uses osascript admin dialog for system-level items.
+ * Enable or disable a launch agent/daemon through launchd's override
+ * database. Only the plist path is trusted from the renderer; label and
+ * scope are re-derived from disk.
  */
-export async function disableStartupItem(
-  plistPath: string,
-): Promise<{ success: boolean; message: string }> {
-  try {
-    const admin = needsAdmin(plistPath);
-    const escaped = plistPath.replace(/'/g, "'\\''");
-
-    const cmd = `defaults write '${escaped}' Disabled -bool true && launchctl unload -w '${escaped}' 2>/dev/null; true`;
-
-    if (admin) {
-      await runWithAdmin(cmd);
-    } else {
-      await runCommand(cmd);
-    }
-
-    return {
-      success: true,
-      message: `Disabled ${path.basename(plistPath)}`,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      message: `Failed: ${(err as Error).message}`,
-    };
+export async function setStartupItemEnabled(
+  item: Pick<StartupItem, "path">,
+  enabled: boolean,
+): Promise<ToggleResult> {
+  const plistPath = item?.path;
+  const source = SOURCES.find(
+    (s) => typeof plistPath === "string" && path.dirname(plistPath) === s.dir,
+  );
+  if (!source || !plistPath.endsWith(".plist")) {
+    return { success: false, cancelled: false, error: "Unknown startup item" };
   }
-}
 
-/**
- * Enable a startup item by writing Disabled=false
- * and loading it via launchctl.
- */
-export async function enableStartupItem(
-  plistPath: string,
-): Promise<{ success: boolean; message: string }> {
+  const data = await readPlist(plistPath);
+  const label = typeof data?.Label === "string" ? data.Label : null;
+  if (!label) {
+    return { success: false, cancelled: false, error: "Invalid launchd plist" };
+  }
+
+  const domain = domainFor(source.scope);
+  const target = `${domain}/${label}`;
+
   try {
-    const admin = needsAdmin(plistPath);
-    const escaped = plistPath.replace(/'/g, "'\\''");
-
-    const cmd = `defaults write '${escaped}' Disabled -bool false && launchctl load -w '${escaped}' 2>/dev/null; true`;
-
-    if (admin) {
-      await runWithAdmin(cmd);
+    if (source.scope === "system") {
+      const cmd = enabled
+        ? `launchctl enable ${shellQuote(target)}; launchctl bootstrap ${domain} ${shellQuote(plistPath)} 2>/dev/null; true`
+        : `launchctl disable ${shellQuote(target)}; launchctl bootout ${shellQuote(target)} 2>/dev/null; true`;
+      await runAsAdmin(cmd, "MacSweep needs your password to change a system startup item.");
     } else {
-      await runCommand(cmd);
+      await run("launchctl", [enabled ? "enable" : "disable", target]);
+      if (enabled) {
+        await tryRun("launchctl", ["bootstrap", domain, plistPath]);
+      } else {
+        await tryRun("launchctl", ["bootout", target]);
+      }
     }
-
-    return {
-      success: true,
-      message: `Enabled ${path.basename(plistPath)}`,
-    };
+    return { success: true, cancelled: false };
   } catch (err) {
     return {
       success: false,
-      message: `Failed: ${(err as Error).message}`,
+      cancelled: isCancelled(err),
+      error: errorMessage(err),
     };
   }
 }
