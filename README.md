@@ -51,7 +51,7 @@ The `Makefile` wraps these (`make help` lists everything):
 
 - **CI** (`.github/workflows/ci.yml`) — runs `npm run check` and `npm run build` on every push to `main` and on pull requests.
 - **Release** (`.github/workflows/release.yml`) — on a `v*` tag, checks the tag matches `package.json`, builds both `.dmg` files and publishes them (plus blockmaps and `latest-mac.yml`) as a GitHub release with generated notes. Run `make publish` to trigger it.
-- **Code signing** is optional: add the `CSC_LINK` (base64 `.p12`) and `CSC_KEY_PASSWORD` repository secrets to sign CI builds. Without them the build is unsigned.
+- **Signing & notarization** need a paid Apple Developer account: a *Developer ID Application* certificate (exported as `.p12`) and an App Store Connect API key (`.p8`). Upload them with `scripts/setup-release-secrets.sh`. Without them CI builds are unsigned, and without the API key they are not notarized.
 
 ## Architecture
 
